@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# macOS (IMPORTANT for you)
+.DS_Store
+
+# Node (for frontend later)
+node_modules/
+.next/
+dist/
+
+# Logs
+*.log
+
+# Database
+*.db
+*.sqlite3
