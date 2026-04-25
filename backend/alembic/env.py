@@ -5,7 +5,7 @@ from sqlalchemy import pool
 
 from alembic import context
 
-from app.modules.auth.models import User  # noqa: F401
+from app import models  # noqa: F401
 
 # Project imports
 from app.core.config import settings

@@ -29,3 +29,6 @@ dist/
 # Database
 *.db
 *.sqlite3
+
+# Test Files
+backend/scratch
