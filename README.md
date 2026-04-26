@@ -1,4 +1,4 @@
-# AI English Coach
+# LingosAI - AI English Tutor
 
 An AI-powered English learning platform that analyzes a user's 
 weaknesses and gives personalized daily tasks with precise feedback.
