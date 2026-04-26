@@ -44,7 +44,7 @@ class AuthService:
 
     def authenticate(self, *, email: str, password: str) -> User:
         """
-        Vertify Login Credentials and return the user
+        Verify Login Credentials and return the user
 
         Raises:
             InvalidCredentials: if email not found OR password is wrong.

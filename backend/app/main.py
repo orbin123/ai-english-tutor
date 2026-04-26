@@ -1,1 +1,17 @@
+"""FastAPI application entry point."""
+
 from fastapi import FastAPI
+
+from app.modules.auth.routes import router as auth_router
+
+app = FastAPI(
+    title="LingosAI - English Tutor API",
+    version='0.1.0'
+)
+
+@app.get("/health", tags=["system"])
+def health_check() -> dict[str, str]:
+    """Liveness probe - confirms server is up."""
+    return {"status": "ok"}
+
+app.include_router(auth_router, prefix="/auth", tags=["auth"])
