@@ -1,0 +1,62 @@
+{
+  "title": "Subject-Verb Agreement Drill",
+  "task_type": "reading",
+  "difficulty": 3,
+  "target_skills": [
+    { "skill_name": "grammar", "weight": 1.0 }
+  ],
+  "content": {
+    "instruction": "Choose the grammatically correct sentence for each question.",
+    "source": {
+      "type": "passage",
+      "text": "Subject-verb agreement is one of the most common grammar issues for English learners. The verb must agree with the subject in number — singular subject takes singular verb, plural subject takes plural verb. Be careful with tricky cases like 'each', 'everyone', 'a group of', and 'neither/nor'."
+    },
+    "activities": [
+      {
+        "activity_id": "mcq_1",
+        "activity_type": "mcq",
+        "instruction": "Pick the sentence with correct subject-verb agreement.",
+        "questions": {
+          "Q1": {
+            "prompt": "Which is correct?",
+            "options": {
+              "A": "Each of the students have a book.",
+              "B": "Each of the students has a book.",
+              "C": "Each of the students having a book."
+            }
+          },
+          "Q2": {
+            "prompt": "Which is correct?",
+            "options": {
+              "A": "Neither John nor his friends is coming.",
+              "B": "Neither John nor his friends are coming.",
+              "C": "Neither John nor his friends am coming."
+            }
+          },
+          "Q3": {
+            "prompt": "Which is correct?",
+            "options": {
+              "A": "The team are winning the match.",
+              "B": "The team is winning the match.",
+              "C": "The team be winning the match."
+            }
+          },
+          "Q4": {
+            "prompt": "Which is correct?",
+            "options": {
+              "A": "Everyone in the office are happy today.",
+              "B": "Everyone in the office is happy today.",
+              "C": "Everyone in the office be happy today."
+            }
+          }
+        },
+        "answers": {
+          "Q1": "B",
+          "Q2": "B",
+          "Q3": "B",
+          "Q4": "B"
+        }
+      }
+    ]
+  }
+}

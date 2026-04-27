@@ -28,7 +28,7 @@ class UserResponse(Base, IDMixin, CreatedAtMixin):
     content: Mapped[dict] = mapped_column(JSONB, nullable=False)
     raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # --- Relationships ---
+    # Relationships 
     evaluation: Mapped["Evaluation | None"] = relationship(
         back_populates="response",
         cascade="all, delete-orphan",
@@ -60,7 +60,7 @@ class Evaluation(Base, IDMixin, CreatedAtMixin):
     percentage: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
     report: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
-    # --- Relationships ---
+    # Relationships
     response: Mapped["UserResponse"] = relationship(back_populates="evaluation")
     feedback: Mapped["Feedback | None"] = relationship(
         back_populates="evaluation",
@@ -95,7 +95,7 @@ class Feedback(Base, IDMixin, CreatedAtMixin):
     )
     body: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
-    # --- Relationships ---
+    # Relationships
     evaluation: Mapped["Evaluation"] = relationship(back_populates="feedback")
 
     def __repr__(self) -> str:

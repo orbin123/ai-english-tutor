@@ -1,6 +1,6 @@
 """Skill module models — Skill master table and per-user scores."""
 
-from sqlalchemy import ForeignKey, Numeric, String, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -44,6 +44,13 @@ class UserSkillScore(Base, IDMixin, TimestampMixin):
     # Numeric(3, 1) → up to 999.9, plenty for 0.0–10.0 scores
     score: Mapped[float] = mapped_column(
         Numeric(3, 1), nullable=False, default=3.0
+    )
+
+    is_estimated: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
     )
 
     # Relationships

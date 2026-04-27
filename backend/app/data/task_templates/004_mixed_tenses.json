@@ -1,0 +1,58 @@
+{
+  "title": "Project Deadline — Mixed Tenses",
+  "task_type": "reading",
+  "difficulty": 4,
+  "target_skills": [
+    { "skill_name": "grammar", "weight": 0.7 },
+    { "skill_name": "comprehension", "weight": 0.3 }
+  ],
+  "content": {
+    "instruction": "Read the passage carefully. Then complete the fill-in-the-blanks and the matching activity.",
+    "source": {
+      "type": "passage",
+      "text": "Priya has been working on the project for three weeks. Last Monday, her manager told her that the deadline had been moved up by five days. Since then, she has skipped lunch twice and stayed late every evening. If she finishes the report by Friday, she will get a small bonus. She hopes she will not have to work over the weekend."
+    },
+    "activities": [
+      {
+        "activity_id": "fib_1",
+        "activity_type": "fill_in_the_blanks",
+        "instruction": "Fill in the correct verb form.",
+        "questions": {
+          "Q1": "Priya ___ (work) on the project for three weeks.",
+          "Q2": "Last Monday, her manager ___ (tell) her about the new deadline.",
+          "Q3": "If she ___ (finish) the report by Friday, she will get a bonus.",
+          "Q4": "She hopes she ___ (not have) to work over the weekend."
+        },
+        "answers": {
+          "Q1": "has been working",
+          "Q2": "told",
+          "Q3": "finishes",
+          "Q4": "will not have"
+        }
+      },
+      {
+        "activity_id": "mtf_1",
+        "activity_type": "match_the_following",
+        "instruction": "Match each sentence start in Section A with the correct ending in Section B.",
+        "section_a": {
+          "A": "Priya has been working",
+          "B": "Her manager told her",
+          "C": "She has skipped lunch",
+          "D": "She will get a bonus"
+        },
+        "section_b": {
+          "1": "if she finishes by Friday.",
+          "2": "on the project for three weeks.",
+          "3": "that the deadline was moved up.",
+          "4": "twice since Monday."
+        },
+        "answers": {
+          "A": "2",
+          "B": "3",
+          "C": "4",
+          "D": "1"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "title": "The Job Interview — Past Tense",
+  "task_type": "reading",
+  "difficulty": 2,
+  "target_skills": [
+    { "skill_name": "grammar", "weight": 0.7 },
+    { "skill_name": "comprehension", "weight": 0.3 }
+  ],
+  "content": {
+    "instruction": "Read the passage. Then complete both activities below.",
+    "source": {
+      "type": "passage",
+      "text": "Yesterday, Ahmed went to a job interview at a software company. While he was waiting in the lobby, he reviewed his notes. The interviewer arrived ten minutes late and apologized politely. Ahmed answered every question carefully. After the interview, he felt confident but tired."
+    },
+    "activities": [
+      {
+        "activity_id": "fib_1",
+        "activity_type": "fill_in_the_blanks",
+        "instruction": "Fill in the correct past tense form.",
+        "questions": {
+          "Q1": "Yesterday, Ahmed ___ (go) to a job interview.",
+          "Q2": "While he ___ (wait) in the lobby, he reviewed his notes.",
+          "Q3": "The interviewer ___ (arrive) ten minutes late.",
+          "Q4": "After the interview, he ___ (feel) tired."
+        },
+        "answers": {
+          "Q1": "went",
+          "Q2": "was waiting",
+          "Q3": "arrived",
+          "Q4": "felt"
+        }
+      },
+      {
+        "activity_id": "mcq_1",
+        "activity_type": "mcq",
+        "instruction": "Choose the best answer based on the passage.",
+        "questions": {
+          "Q1": {
+            "prompt": "Why did the interviewer apologize?",
+            "options": {
+              "A": "He arrived late.",
+              "B": "He asked a wrong question.",
+              "C": "He forgot Ahmed's name."
+            }
+          },
+          "Q2": {
+            "prompt": "Which sentence uses past continuous correctly?",
+            "options": {
+              "A": "He was reviewed his notes.",
+              "B": "He was reviewing his notes.",
+              "C": "He were reviewing his notes."
+            }
+          }
+        },
+        "answers": {
+          "Q1": "A",
+          "Q2": "B"
+        }
+      }
+    ]
+  }
+}

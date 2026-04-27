@@ -1,13 +1,17 @@
 """Task module models — Task, TaskSkill junction, and related enums."""
 
 from datetime import datetime
-from sqlalchemy import DateTime
 
 from enum import Enum
 
-from sqlalchemy import Enum as SQLAlchemyEnum, ForeignKey, Numeric, String
+from sqlalchemy import DateTime, Enum as SQLAlchemyEnum, ForeignKey, Numeric, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.modules.skills.models import Skill
 
 from app.core.database import Base
 from app.core.mixins import IDMixin, TimestampMixin
@@ -59,7 +63,7 @@ class Task(Base, IDMixin, TimestampMixin):
     # Full task body — passage, questions, answer keys. Shape depends on task_type.
     content: Mapped[dict] = mapped_column(JSONB, nullable=False)
 
-    # --- Relationships ---
+    # Relationships
     task_skills: Mapped[list["TaskSkill"]] = relationship(
         back_populates="task", cascade="all, delete-orphan"
     )
@@ -129,7 +133,7 @@ class UserTask(Base, IDMixin, TimestampMixin):
         DateTime(timezone=True), nullable=True
     )
 
-    # --- Relationships ---
+    # Relationships 
     task: Mapped["Task"] = relationship()
 
     def __repr__(self) -> str:

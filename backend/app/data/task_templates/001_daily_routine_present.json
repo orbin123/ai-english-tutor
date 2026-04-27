@@ -1,0 +1,35 @@
+{
+  "title": "Daily Routine — Present Tense",
+  "task_type": "reading",
+  "difficulty": 1,
+  "target_skills": [
+    { "skill_name": "grammar", "weight": 0.8 },
+    { "skill_name": "comprehension", "weight": 0.2 }
+  ],
+  "content": {
+    "instruction": "Read the passage and fill in the blanks with the correct verb form.",
+    "source": {
+      "type": "passage",
+      "text": "Maria is a school teacher. Every morning, she wakes up at six o'clock. She makes a cup of tea and reads the newspaper. After breakfast, she walks to school. Her students like her because she always smiles."
+    },
+    "activities": [
+      {
+        "activity_id": "fib_1",
+        "activity_type": "fill_in_the_blanks",
+        "instruction": "Use the correct present tense form of the verb in brackets.",
+        "questions": {
+          "Q1": "Maria ___ (be) a school teacher.",
+          "Q2": "She ___ (wake) up at six o'clock every morning.",
+          "Q3": "Her students ___ (like) her.",
+          "Q4": "She always ___ (smile) at them."
+        },
+        "answers": {
+          "Q1": "is",
+          "Q2": "wakes",
+          "Q3": "like",
+          "Q4": "smiles"
+        }
+      }
+    ]
+  }
+}
