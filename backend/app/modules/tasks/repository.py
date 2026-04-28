@@ -139,13 +139,23 @@ class UserTaskRepository:
         return query.all()
     
     # Writes
-    def assign(self, *, user_id: int, task_id: int) -> UserTask:
+    def assign(
+        self,
+        *,
+        user_id: int,
+        task_id: int,
+        enrollment_id: int | None = None,
+    ) -> UserTask:
         """Create a new assignment with default status (PENDING).
-        
-        Service decides when to commit - this method only flushes to get
-        the new id populated.
+
+        `enrollment_id` is optional — set when the task came from a
+        curriculum slot, None for ad-hoc/bonus tasks (future).
         """
-        assignment = UserTask(user_id=user_id, task_id=task_id)
+        assignment = UserTask(
+            user_id=user_id,
+            task_id=task_id,
+            enrollment_id=enrollment_id,
+        )
         self.db.add(assignment)
         self.db.flush()
         return assignment
@@ -162,4 +172,29 @@ class UserTaskRepository:
         user_task.completed_at = datetime.now(timezone.utc)
         self.db.flush()
         return user_task 
+
+    def find_active_for_enrollment_day(
+        self,
+        *,
+        enrollment_id: int,
+    ) -> UserTask | None:
+        """Return the open (PENDING or IN_PROGRESS) UserTask for this
+        enrollment, if any. Used for idempotency on /tasks/next.
+
+        Why this works: enrollment.current_week + current_day_in_week only
+        advance when a task is COMPLETED. So any non-completed UserTask
+        attached to this enrollment IS the current day's task by definition.
+        """
+        return (
+            self.db.query(UserTask)
+            .filter(
+                UserTask.enrollment_id == enrollment_id,
+                UserTask.status.in_(
+                    [UserTaskStatus.PENDING, UserTaskStatus.IN_PROGRESS]
+                ),
+            )
+            .options(joinedload(UserTask.task))
+            .order_by(UserTask.created_at.desc())
+            .first()
+        )
 

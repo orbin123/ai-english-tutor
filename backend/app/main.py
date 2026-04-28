@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.modules.auth.routes import router as auth_router
 from app.modules.diagnosis.routes import router as diagnosis_router 
 from app.modules.curriculum.routes import router as curriculum_router
+from app.modules.tasks.routes import router as tasks_router
 
 app = FastAPI(
     title="LingosAI - English Tutor API",
@@ -19,3 +20,4 @@ def health_check() -> dict[str, str]:
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(diagnosis_router, prefix="/diagnosis", tags=["diagnosis"])
 app.include_router(curriculum_router)
+app.include_router(tasks_router)
