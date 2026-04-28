@@ -1,6 +1,6 @@
 """Data access for Task templates and UserTask assignments"""
 
-from sqlalchemy import func
+from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.modules.tasks.models import (
@@ -93,7 +93,7 @@ class TaskRepository:
                 )
                 .subquery()
             )
-            query = query.filter(Task.id.notin_(completed_subq))
+            query = query.filter(Task.id.notin_(select(completed_subq)))
 
         # Order by closeness to target_difficulty using SQL abs()
         from sqlalchemy import func
