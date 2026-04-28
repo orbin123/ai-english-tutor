@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 30
 
+    # AI / LLM
+    OPENAI_API_KEY: str
+    LANGCHAIN_TRACING_V2: bool = True
+    LANGCHAIN_API_KEY: str
+    LANGCHAIN_PROJECT: str = "ai-english-coach"
+    LANGCHAIN_ENDPOINT: str = "https://api.smith.langchain.com"
+
     # Find and read .env file
     model_config = SettingsConfigDict(
         env_file="../.env",
@@ -34,6 +41,8 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+
 
 # Single shared instance
 settings = Settings()
