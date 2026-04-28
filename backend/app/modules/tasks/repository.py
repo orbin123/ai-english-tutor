@@ -1,11 +1,13 @@
 """Data access for Task templates and UserTask assignments"""
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.modules.tasks.models import (
     Task,
     TaskSkill,
     TaskStatus,
+    TaskType,
     UserTask,
     UserTaskStatus,
 )
@@ -49,6 +51,58 @@ class TaskRepository:
             .order_by(Task.difficulty, Task.id)
             .all()
         )
+    
+    def find_for_plan(
+        self,
+        *,
+        skill_id: int,
+        activity_type: TaskType,
+        target_difficulty: int,
+        exclude_completed_by_user_id: int | None = None,
+    ) -> Task | None:
+        """Find ONE task that matches a rotation engine's plan.
+
+        Selection rules:
+          - Task must be ACTIVE
+          - Task must have task_type matching activity_type
+          - Task must target the given skill (via TaskSkill junction)
+          - If exclude_completed_by_user_id is given, skip tasks the user
+            has already completed
+          - Prefer tasks closest to target_difficulty
+          - Tiebreak: lower id (oldest = most stable)
+
+        Returns None if no task matches (caller should raise NoTaskAvailable).
+        """
+        query = (
+            self.db.query(Task)
+            .join(TaskSkill, TaskSkill.task_id == Task.id)
+            .filter(
+                Task.status == TaskStatus.ACTIVE,
+                Task.task_type == activity_type,
+                TaskSkill.skill_id == skill_id,
+            )
+            .options(joinedload(Task.task_skills))
+        )
+
+        if exclude_completed_by_user_id is not None:
+            completed_subq = (
+                self.db.query(UserTask.task_id)
+                .filter(
+                    UserTask.user_id == exclude_completed_by_user_id,
+                    UserTask.status == UserTaskStatus.COMPLETED,
+                )
+                .subquery()
+            )
+            query = query.filter(Task.id.notin_(select(completed_subq)))
+
+        # Order by closeness to target_difficulty using SQL abs()
+        from sqlalchemy import func
+        query = query.order_by(
+            func.abs(Task.difficulty - target_difficulty),
+            Task.id,
+        )
+
+        return query.first()
     
 class UserTaskRepository:
     """All DB access for UserTask (a task assigned to a specific user)"""
@@ -109,4 +163,3 @@ class UserTaskRepository:
         self.db.flush()
         return user_task 
 
-    
