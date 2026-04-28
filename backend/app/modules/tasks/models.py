@@ -125,6 +125,11 @@ class UserTask(Base, IDMixin, TimestampMixin):
     task_id: Mapped[int] = mapped_column(
         ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    enrollment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("user_enrollments.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     status: Mapped[UserTaskStatus] = mapped_column(
         SQLAlchemyEnum(UserTaskStatus, name="user_task_status_enum"),
         nullable=False, default=UserTaskStatus.PENDING, index=True,
