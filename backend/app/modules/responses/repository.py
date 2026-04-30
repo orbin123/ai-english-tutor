@@ -58,19 +58,56 @@ class ResponseRepository:
 
 # Evaluation 
 
-class EvaluationRepository:
-    """DB access for Evaluation rows.
+# Evaluation 
 
-    For S12 we only need reads — the row is created elsewhere (S13).
-    """
+class EvaluationRepository:
+    """DB access for Evaluation rows."""
 
     def __init__(self, db: Session) -> None:
         self.db = db
 
+    # Reads
     def get_by_id(self, evaluation_id: int) -> Evaluation | None:
         """Single evaluation by primary key. Returns None if not found."""
         return self.db.get(Evaluation, evaluation_id)
 
+    def get_by_response_id(self, response_id: int) -> Evaluation | None:
+        """Find the evaluation for a given response, if one exists.
+
+        UNIQUE on response_id, so at most one row.
+        Used by the service to detect 'already evaluated' before
+        running the evaluator a second time.
+        """
+        return (
+            self.db.query(Evaluation)
+            .filter(Evaluation.response_id == response_id)
+            .first()
+        )
+
+    # Writes
+    def create(
+        self,
+        *,
+        response_id: int,
+        overall_score: float,
+        percentage: float,
+        report: dict,
+    ) -> Evaluation:
+        """Insert a new evaluation row.
+
+        Caller must ensure no existing evaluation for this response
+        (UNIQUE on response_id will raise otherwise).
+        Service layer handles the commit.
+        """
+        evaluation = Evaluation(
+            response_id=response_id,
+            overall_score=overall_score,
+            percentage=percentage,
+            report=report,
+        )
+        self.db.add(evaluation)
+        self.db.flush()
+        return evaluation
 
 # Feedback 
 class FeedbackRepository:

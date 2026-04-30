@@ -36,3 +36,46 @@ class ResponseRead(BaseModel):
     content: dict
     raw_text: str | None
     created_at: datetime
+
+class SkillScoreRead(BaseModel):
+    """One updated skill score row, friendly for the frontend."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    skill_id: int
+    skill_name: str
+    score: float
+
+
+class EvaluationRead(BaseModel):
+    """Public view of an evaluation."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    overall_score: float
+    percentage: float
+    report: dict
+
+
+class FeedbackRead(BaseModel):
+    """Public view of an LLM-generated feedback."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    body: dict
+
+
+class ResponseGradedRead(BaseModel):
+    """Full response for POST /responses/submit — the whole loop in one bundle.
+
+    Returned after: response saved → evaluated → feedback generated →
+    skill scores updated. This is what the frontend needs to render the
+    'task results' screen in one round trip.
+    """
+
+    response: ResponseRead
+    evaluation: EvaluationRead
+    feedback: FeedbackRead
+    skill_scores: list[SkillScoreRead]
