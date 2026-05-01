@@ -18,7 +18,8 @@ export function useRegister() {
     },
     onSuccess: (res) => {
       setToken(res.access_token);
-      router.push("/dashboard");
+      // New users always need diagnosis
+      router.push("/diagnosis");
     },
   });
 }

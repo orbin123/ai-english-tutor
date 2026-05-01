@@ -18,6 +18,7 @@ class UserOut(BaseModel):
     id: int
     email: EmailStr
     name: str
+    diagnosis_completed: bool = False  # tells frontend where to send the user
 
     model_config = {"from_attributes": True}
 
@@ -25,4 +26,3 @@ class TokenOut(BaseModel):
     """Output Schema returned after successful login."""
     access_token: str
     token_type: str = "bearer"
-

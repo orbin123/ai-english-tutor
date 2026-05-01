@@ -6,6 +6,7 @@ export interface UserOut {
   id: number;
   email: string;
   name: string;
+  diagnosis_completed: boolean;
 }
 
 export interface TokenOut {
