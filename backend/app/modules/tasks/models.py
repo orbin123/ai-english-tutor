@@ -100,15 +100,6 @@ class TaskSkill(Base, IDMixin):
     def __repr__(self) -> str:
         return f"<TaskSkill(task_id={self.task_id}, skill_id={self.skill_id}, weight={self.weight})>"
 
-# UserTask — assignment record (User ↔ Task junction with state)
-class UserTaskStatus(str, Enum):
-    """Lifecycle of an assigned task for a user."""
-    PENDING = "pending"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    SKIPPED = "skipped"
-
-
 class UserTask(Base, IDMixin, TimestampMixin):
     """
     A specific task assigned to a specific user.

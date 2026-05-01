@@ -49,4 +49,5 @@ export const diagnosisSchema = z.object({
   read_aloud: readAloudSchema,
 });
 
-export type DiagnosisInput = z.infer<typeof diagnosisSchema>;
+export type DiagnosisFormInput = z.input<typeof diagnosisSchema>;
+export type DiagnosisInput = z.output<typeof diagnosisSchema>;

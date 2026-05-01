@@ -7,10 +7,26 @@ from app.core.database import get_db
 from app.modules.auth.dependencies import get_current_user
 from app.modules.auth.models import User
 from app.modules.curriculum.exceptions import AlreadyEnrolled, CourseNotFound
-from app.modules.curriculum.schemas import EnrollmentCreate, EnrollmentRead
+from app.modules.curriculum.repository import CourseRepository
+from app.modules.curriculum.schemas import (
+    CourseRead,
+    EnrollmentCreate,
+    EnrollmentRead,
+)
 from app.modules.curriculum.service import EnrollmentService
 
 router = APIRouter(prefix="/courses", tags=["courses"])
+
+
+@router.get(
+    "",
+    response_model=list[CourseRead],
+    status_code=status.HTTP_200_OK,
+)
+def list_courses(db: Session = Depends(get_db)) -> list[CourseRead]:
+    """Return all active courses available for enrollment."""
+    courses = CourseRepository(db).list_active()
+    return [CourseRead.model_validate(course) for course in courses]
 
 
 @router.post(
