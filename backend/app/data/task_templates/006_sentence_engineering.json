@@ -1,0 +1,35 @@
+{
+  "title": "Build the Sentence — Word Order Practice",
+  "task_type": "writing",
+  "difficulty": 2,
+  "target_skills": [
+    { "skill_name": "grammar", "weight": 0.8 },
+    { "skill_name": "expression", "weight": 0.2 }
+  ],
+  "content": {
+    "instruction": "Each question gives you a set of words. Tap them in the correct order to form a complete sentence.",
+    "source": {
+      "type": "passage",
+      "text": "Pay attention to word order, capitalization, and the final punctuation mark."
+    },
+    "activities": [
+      {
+        "activity_id": "seng_1",
+        "activity_type": "sentence_engineering",
+        "instruction": "Use ALL the given words to form one correct sentence. The final answer should end with a period.",
+        "questions": {
+          "Q1": { "words": ["went", "she", "yesterday", "to", "the", "market"] },
+          "Q2": { "words": ["my", "is", "name", "Ahmed"] },
+          "Q3": { "words": ["coffee", "every", "I", "morning", "drink"] },
+          "Q4": { "words": ["been", "have", "they", "friends", "since", "childhood"] }
+        },
+        "answers": {
+          "Q1": "She went to the market yesterday.",
+          "Q2": "My name is Ahmed.",
+          "Q3": "I drink coffee every morning.",
+          "Q4": "They have been friends since childhood."
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "title": "Workplace Email — Paraphrasing Basics",
+  "task_type": "writing",
+  "difficulty": 2,
+  "target_skills": [
+    { "skill_name": "grammar", "weight": 0.7 },
+    { "skill_name": "expression", "weight": 0.3 }
+  ],
+  "content": {
+    "instruction": "Read each sentence and rewrite it in your own words. Keep the meaning the same, but change the wording.",
+    "source": {
+      "type": "passage",
+      "text": "These are common workplace sentences. Practice rewriting them in a different way."
+    },
+    "activities": [
+      {
+        "activity_id": "para_1",
+        "activity_type": "paraphrasing",
+        "instruction": "Rewrite each sentence. Use different words but keep the same meaning. Each answer should be a full sentence.",
+        "questions": {
+          "Q1": "I am very busy today because I have many meetings.",
+          "Q2": "She arrived late to the office because of heavy traffic.",
+          "Q3": "We need to finish the report before Friday.",
+          "Q4": "The manager was happy with the team's performance."
+        },
+        "min_words": 5,
+        "reference_answers": {
+          "Q1": "Today is very hectic for me as I have several meetings scheduled.",
+          "Q2": "Heavy traffic caused her to be late to the office.",
+          "Q3": "The report must be completed by Friday.",
+          "Q4": "The team's performance pleased the manager."
+        }
+      }
+    ]
+  }
+}

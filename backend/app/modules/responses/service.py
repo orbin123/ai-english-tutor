@@ -2,8 +2,8 @@
 
 from sqlalchemy.orm import Session
 
+from app.ai.agents import EvaluationService
 from app.modules.progress.service import ScoreUpdaterService
-from app.modules.responses.evaluation import EvaluationService
 from app.modules.responses.exceptions import (
     NotResponseOwner,
     ResponseAlreadySubmitted,
@@ -101,17 +101,25 @@ class ResponseService:
 
         Idempotent: if an evaluation already exists for this response,
         return it instead of re-evaluating.
+
+        Picks the right evaluator based on the FIRST activity inside
+        Task.content.activities. MVP shortcut: a task today has exactly
+        one scorable activity. When tasks bundle multiple activities,
+        we'll loop here and aggregate.
         """
         # Idempotency guard — protects against retries/duplicate calls
         existing = self.evaluation_repo.get_by_response_id(response.id)
         if existing is not None:
             return existing
 
-        # Walk back to the Task to get the answer key
+        # Walk back to the Task to get the answer key + activity type
         user_task = self.user_task_repo.get_by_id(response.user_task_id)
         task = user_task.task
 
-        report = self.evaluator.evaluate_fill_in_blanks(
+        activity_type = self._first_activity_type(task.content)
+
+        report = self.evaluator.evaluate(
+            activity_type=activity_type,
             task_content=task.content,
             user_answers=response.content,
         )
@@ -129,6 +137,20 @@ class ResponseService:
         self.db.commit()
         self.db.refresh(evaluation)
         return evaluation
+
+    @staticmethod
+    def _first_activity_type(task_content: dict) -> str:
+        """Return the activity_type of the first activity in the task.
+
+        Raises ValueError if the task has no activities at all — that's
+        a malformed seed and should fail loud, not silently default.
+        """
+        activities = task_content.get("activities") or []
+        if not activities:
+            raise ValueError(
+                "Task content has no activities — cannot evaluate"
+            )
+        return activities[0]["activity_type"]
 
     # ---- The whole loop ----
     async def submit_and_grade(
