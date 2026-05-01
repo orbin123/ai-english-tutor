@@ -10,12 +10,21 @@ from app.modules.curriculum.routes import router as curriculum_router
 from app.modules.tasks.routes import router as tasks_router
 from app.modules.responses.routes import router as responses_router
 from app.ai.routes import router as ai_router
+from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv("../.env")
 
 app = FastAPI(
     title="LingosAI - English Tutor API",
     version='0.1.0'
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.get("/health", tags=["system"])
