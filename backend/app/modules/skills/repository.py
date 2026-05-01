@@ -40,6 +40,7 @@ class UserSkillScoreRepository:
         return (
             self.db.query(UserSkillScore)
             .filter(UserSkillScore.user_id == user_id)
+            .order_by(UserSkillScore.skill_id.asc())
             .all()
         )
 

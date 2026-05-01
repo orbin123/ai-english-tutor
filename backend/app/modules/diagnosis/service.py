@@ -1,5 +1,7 @@
 """Business logic for the diagnosis flow."""
 
+from decimal import Decimal
+
 from sqlalchemy.orm import Session
 
 from app.modules.auth.repository import UserProfileRepository
@@ -26,6 +28,8 @@ class DiagnosisService:
     Owns the transaction boundary: one commit at the end.
     """
 
+    SCORE_SCALE = Decimal("2.5")
+
     # Skills that come from indirect signals (not from a real speaking task yet).
     ESTIMATED_SKILLS: set[str] = {"pronunciation", "tone"}
 
@@ -42,6 +46,11 @@ class DiagnosisService:
         self.text_eval = TextEvaluator()
         self.speech_eval = SpeechEvaluator()
 
+    @classmethod
+    def _to_progress_scale(cls, score: float) -> float:
+        """Convert diagnosis seed scores from the internal 1-4 scale to 0-10."""
+        return float((Decimal(str(score)) * cls.SCORE_SCALE).quantize(Decimal("0.1")))
+
     def run_diagnosis(
         self, *, user_id: int, payload: DiagnosisSubmitRequest
     ) -> dict[str, float]:
@@ -56,7 +65,7 @@ class DiagnosisService:
           6. Single commit at the end
 
         Returns:
-            dict mapping skill name → final score (for API response)
+            dict mapping skill name → final score on the shared 0-10 scale
 
         Raises:
             DiagnosisInvalidPayload: profile missing (shouldn't happen post-signup)
@@ -90,7 +99,7 @@ class DiagnosisService:
 
         # 3. Compute 7 scores
         sa = payload.self_assessment
-        skill_scores = compute_skill_scores(
+        raw_skill_scores = compute_skill_scores(
             level=sa.self_assessed_level,
             exposure=sa.content_exposure,
             fill_blank_correct_count=fill_correct,
@@ -100,6 +109,10 @@ class DiagnosisService:
             speech_fluency=speech["fluency_score"],
             speech_clarity=speech["clarity_score"],
         )
+        skill_scores = {
+            skill_name: self._to_progress_scale(score)
+            for skill_name, score in raw_skill_scores.items()
+        }
 
         # 4. Upsert each score
         name_to_id = self.skills.name_to_id_map()

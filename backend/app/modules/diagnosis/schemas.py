@@ -51,6 +51,6 @@ class DiagnosisSubmitRequest(BaseModel):
 # The response
 class DiagnosisSubmitResponse(BaseModel):
     """Response after diagnosis is computed."""
-    skill_scores: dict[str, float]      # {"grammar": 3.0, "vocabulary": 2.7, ...}
+    skill_scores: dict[str, float]      # {"grammar": 7.5, "vocabulary": 6.8, ...}
     weakest_skills: list[str]            # 2 lowest, by score
     next_step: str = "Your first personalized task is ready."
