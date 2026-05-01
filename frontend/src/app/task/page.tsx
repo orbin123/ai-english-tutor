@@ -11,7 +11,10 @@ import { authApi } from "@/lib/auth-api";
 import { useNextTask } from "@/hooks/useNextTask";
 import { useSubmitResponse } from "@/hooks/useSubmitResponse";
 import { getApiErrorMessage } from "@/lib/errors";
-import type { FillInBlanksActivity } from "@/lib/tasks-api";
+import {
+  TaskRenderer,
+  defaultValuesFor,
+} from "@/components/task/TaskRenderer";
 
 // Form shape: one string answer per question key (Q1, Q2, ...)
 type FormValues = Record<string, string>;
@@ -42,24 +45,23 @@ export default function TaskPage() {
   );
   const submit = useSubmitResponse();
 
-  // Find the first fill-in-the-blanks activity. For S19 we only handle one.
-  const fibActivity: FillInBlanksActivity | undefined = useMemo(() => {
-    return taskQuery.data?.task.content.activities.find(
-      (a) => a.activity_type === "fill_in_the_blanks",
-    );
-  }, [taskQuery.data]);
+  // We pick the FIRST activity in the task. (Today every seed has exactly
+  // one scorable activity; when we bundle multiple per task, this becomes
+  // a list + step indicator.)
+  const activity = useMemo(
+    () => taskQuery.data?.task.content.activities[0],
+    [taskQuery.data],
+  );
 
-  // Build default values { Q1: "", Q2: "", ... } from the question keys
-  const defaultValues: FormValues = useMemo(() => {
-    if (!fibActivity) return {};
-    return Object.keys(fibActivity.questions).reduce<FormValues>((acc, k) => {
-      acc[k] = "";
-      return acc;
-    }, {});
-  }, [fibActivity]);
+  // Default values keyed by Q1, Q2, ... — depends on which activity we got.
+  const defaultValues: FormValues = useMemo(
+    () => (activity ? defaultValuesFor(activity) : {}),
+    [activity],
+  );
 
   const {
     register,
+    setValue,
     handleSubmit,
     reset,
     formState: { errors },
@@ -173,12 +175,11 @@ export default function TaskPage() {
     );
   }
 
-  if (!taskQuery.data || !fibActivity) {
+  if (!taskQuery.data || !activity) {
     return (
       <main className="flex min-h-screen items-center justify-center px-4">
         <p className="text-gray-600">
-          Today&apos;s task is not a fill-in-the-blanks task. (Other types
-          coming soon.)
+          Today&apos;s task has no activity. Please try again later.
         </p>
       </main>
     );
@@ -186,7 +187,6 @@ export default function TaskPage() {
 
   const { task } = taskQuery.data;
   const passage = task.content.source.text;
-  const questionEntries = Object.entries(fibActivity.questions);
 
   return (
     <main className="flex min-h-screen items-start justify-center px-4 py-10">
@@ -207,34 +207,14 @@ export default function TaskPage() {
           </blockquote>
         </section>
 
-        {/* Fill-in-blanks form */}
+        {/* Activity + submit */}
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <p className="text-sm text-gray-700">{fibActivity.instruction}</p>
-
-          {questionEntries.map(([qKey, qText], i) => (
-            <div key={qKey}>
-              <label className="block text-sm">
-                <span className="font-medium text-gray-700">
-                  {i + 1}. {qText}
-                </span>
-              </label>
-              <input
-                type="text"
-                autoComplete="off"
-                {...register(qKey, {
-                  required: "Please type an answer",
-                  setValueAs: (v: string) => v.trim(),
-                })}
-                className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
-                placeholder="Your answer"
-              />
-              {errors[qKey] && (
-                <p className="mt-1 text-sm text-red-600">
-                  {errors[qKey]?.message as string}
-                </p>
-              )}
-            </div>
-          ))}
+          <TaskRenderer
+            activity={activity}
+            register={register}
+            setValue={setValue}
+            errors={errors}
+          />
 
           {submit.error && (
             <p className="rounded bg-red-50 p-2 text-sm text-red-700">

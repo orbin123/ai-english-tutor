@@ -1,18 +1,30 @@
-"""Feedback Agent (Agent 3) - generates human-readable corrective feedback.
+"""Agent 3 — Feedback Agent.
 
-Input : original task + user's answer + evaluation report
+Generates human-readable corrective feedback for a learner.
+
+Input  : original task + user's answer + evaluation report
 Output : structured JSON matching FeedbackOutput schema
-Rule : Never says "Good job!" alone. Every praise must be followed by a correction
+Rule   : Never says "Good job!" alone. Every praise must be followed
+         by a specific correction.
+
+Implementation: LLM-backed (OpenAI via langchain_openai).
+The single public entry point is `generate_feedback(...)`.
 """
 
+import json
 from typing import Literal
-from pydantic import BaseModel, Field 
+
+from pydantic import BaseModel, Field
 
 from app.ai.llm import get_llm
 
-# 1. OUTPUT SCHEMA - What we force the LLM to return 
+
+# ---------------------------------------------------------------------------
+# 1. OUTPUT SCHEMA — what we force the LLM to return
+# ---------------------------------------------------------------------------
 class ErrorExplanation(BaseModel):
     """One mistake, fully explained for the learner."""
+
     question_id: str = Field(description="e.g 'Q1', 'Q2'")
     user_answer: str = Field(description="What the user wrote")
     correct_answer: str = Field(description="The right answer")
@@ -21,8 +33,9 @@ class ErrorExplanation(BaseModel):
     rule: str = Field(description="The grammar/usage rule in simple words")
     memory_tip: str = Field(description="A short trick to remember it")
 
+
 class FeedbackOutput(BaseModel):
-    """Full Feedback payload - saved into Feedback.body JSONB."""
+    """Full feedback payload — saved into Feedback.body JSONB."""
 
     overall_message: str = Field(
         description=(
@@ -39,7 +52,10 @@ class FeedbackOutput(BaseModel):
         description="One concrete next step (e.g. 'Write 5 past-tense sentences')"
     )
 
-# 2. SYSTEM PROMPT - the agent's personality + rules (never changes per call)
+
+# ---------------------------------------------------------------------------
+# 2. SYSTEM PROMPT — agent personality + rules (constant per call)
+# ---------------------------------------------------------------------------
 FEEDBACK_SYSTEM_PROMPT = """\
 You are a strict but kind English tutor. You give feedback to non-native
 English learners on their task answers.
@@ -65,15 +81,17 @@ You will receive:
 Return your response in the required JSON schema. Nothing else.
 """
 
-# 3. HUMAN MESSAGE TEMPLATE - formats the per-call data
-def build_human_message(
+
+# ---------------------------------------------------------------------------
+# 3. HUMAN MESSAGE TEMPLATE — formats the per-call data
+# ---------------------------------------------------------------------------
+def _build_human_message(
     task_content: dict,
     user_answers: dict,
     evaluation_report: dict,
     score: int,
 ) -> str:
     """Format task + answers + eval into one message for the LLM."""
-    import json 
     return f"""\
 ORIGINAL TASK:
 {json.dumps(task_content, indent=2)}
@@ -89,27 +107,33 @@ SCORE: {score}/100
 Generate corrective feedback now.
 """
 
-# 4. THE AGENT FUNCTION
+
+# ---------------------------------------------------------------------------
+# 4. PUBLIC ENTRY POINT
+# ---------------------------------------------------------------------------
 async def generate_feedback(
     task_content: dict,
     user_answers: dict,
     evaluation_report: dict,
-    score: int 
+    score: int,
 ) -> FeedbackOutput:
-    """
-    Call the Feedback Agent. Returns a validated FeedbackOutput.
+    """Call the Feedback Agent. Returns a validated FeedbackOutput.
 
-    Raises pydantic. ValidationError if the LLM returns bad JSON
-    (Very rare with structured output, but possible)
+    Raises:
+        pydantic.ValidationError: if the LLM returns bad JSON.
+            (Very rare with structured output, but possible.)
     """
     llm = get_llm()
     structured_llm = llm.with_structured_output(FeedbackOutput)
 
     messages = [
         ("system", FEEDBACK_SYSTEM_PROMPT),
-        ("human", build_human_message(
-            task_content, user_answers, evaluation_report, score
-        )),
+        (
+            "human",
+            _build_human_message(
+                task_content, user_answers, evaluation_report, score
+            ),
+        ),
     ]
 
     result = await structured_llm.ainvoke(messages)

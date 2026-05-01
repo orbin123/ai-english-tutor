@@ -4,7 +4,7 @@ Flow (given an evaluation_id):
   1. Load Evaluation (404 if missing).
   2. Walk back: Evaluation → UserResponse → UserTask → Task.
   3. Reshape that data into the inputs Agent 3 expects.
-  4. Call generate_feedback() (the LLM agent from app/ai/feedback.py).
+  4. Call generate_feedback() (the LLM agent from app/ai/agents/feedback.py).
   5. Persist the validated FeedbackOutput into a new Feedback row.
   6. Commit, return the Feedback ORM object.
 
@@ -17,7 +17,7 @@ this again with the same evaluation_id).
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.ai.feedback import generate_feedback
+from app.ai.agents import generate_feedback
 from app.modules.responses.exceptions import (
     EvaluationNotFound,
     FeedbackAlreadyExists,
@@ -93,4 +93,3 @@ class FeedbackService:
         self.db.commit()
         self.db.refresh(feedback)
         return feedback
-    
