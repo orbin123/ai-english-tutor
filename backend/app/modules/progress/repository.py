@@ -1,5 +1,7 @@
 """Data access for ProgressLog — append-only history of skill score changes."""
 
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy.orm import Session
 
 from app.modules.progress.models import ProgressLog
@@ -14,6 +16,31 @@ class ProgressLogRepository:
 
     def __init__(self, db: Session) -> None:
         self.db = db
+
+    # Reads
+    def list_for_user_skill(
+        self,
+        *,
+        user_id: int,
+        skill_id: int,
+        days: int,
+    ) -> list[ProgressLog]:
+        """Return history rows for one (user, skill) within the last N days.
+
+        Ordered oldest → newest, so the line chart can render left to right
+        without the frontend having to sort.
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        return (
+            self.db.query(ProgressLog)
+            .filter(
+                ProgressLog.user_id == user_id,
+                ProgressLog.skill_id == skill_id,
+                ProgressLog.created_at >= cutoff,
+            )
+            .order_by(ProgressLog.created_at.asc())
+            .all()
+        )
 
     # Writes
     def create(
