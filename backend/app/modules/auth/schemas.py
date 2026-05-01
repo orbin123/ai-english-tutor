@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.modules.curriculum.schemas import EnrollmentRead
+
 class UserCreate(BaseModel):
     """Input schema for signup. What the client sends."""
     email: EmailStr
@@ -19,6 +21,7 @@ class UserOut(BaseModel):
     email: EmailStr
     name: str
     diagnosis_completed: bool = False  # tells frontend where to send the user
+    enrollment: EnrollmentRead | None = None
 
     model_config = {"from_attributes": True}
 

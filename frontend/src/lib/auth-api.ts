@@ -1,4 +1,5 @@
 import { api } from "./api";
+import type { EnrollmentRead } from "./courses-api";
 import type { LoginInput, RegisterInput } from "./validators/auth";
 
 // Backend response shapes
@@ -7,6 +8,7 @@ export interface UserOut {
   email: string;
   name: string;
   diagnosis_completed: boolean;
+  enrollment: EnrollmentRead | null;
 }
 
 export interface TokenOut {

@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import {
   diagnosisSchema,
+  type DiagnosisFormInput,
   type DiagnosisInput,
 } from "@/lib/validators/diagnosis";
 import { useDiagnosis } from "@/hooks/useDiagnosis";
@@ -34,7 +35,7 @@ const READ_ALOUD_PASSAGE = `Every morning I wake up early and walk in the park. 
 const STEPS = ["About you", "Fill the blanks", "Short writing", "Read aloud"];
 
 // Step-1 default values (so the radios/select aren't undefined)
-const DEFAULT_VALUES: DiagnosisInput = {
+const DEFAULT_VALUES: DiagnosisFormInput = {
   self_assessment: {
     self_assessed_level: "beginner",
     goal: "professional",
@@ -75,7 +76,7 @@ export default function DiagnosisPage() {
     trigger,
     control,
     formState: { errors },
-  } = useForm<DiagnosisInput>({
+  } = useForm<DiagnosisFormInput, unknown, DiagnosisInput>({
     resolver: zodResolver(diagnosisSchema),
     defaultValues: DEFAULT_VALUES,
     mode: "onTouched",

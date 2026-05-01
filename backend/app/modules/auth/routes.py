@@ -11,14 +11,16 @@ from app.modules.auth.models import User
 from app.modules.auth.repository import UserProfileRepository
 from app.modules.auth.schemas import TokenOut, UserCreate, UserLogin, UserOut
 from app.modules.auth.service import AuthService
+from app.modules.curriculum.schemas import EnrollmentRead
+from app.modules.curriculum.service import EnrollmentService
 
 router = APIRouter()
 
 @router.post("/signup", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-def signup(payload: UserCreate, db: Session = Depends(get_db)) -> User:
+def signup(payload: UserCreate, db: Session = Depends(get_db)) -> UserOut:
     """Register a new user"""
     try: 
-        return AuthService(db).signup(
+        user = AuthService(db).signup(
             email=payload.email,
             password=payload.password,
             name=payload.name
@@ -28,6 +30,13 @@ def signup(payload: UserCreate, db: Session = Depends(get_db)) -> User:
             status_code=status.HTTP_409_CONFLICT,
             detail="Email is already registered"
         )
+    return UserOut(
+        id=user.id,
+        email=user.email,
+        name=user.name,
+        diagnosis_completed=False,
+        enrollment=None,
+    )
 
 @router.post("/login", response_model=TokenOut)
 def login(payload: UserLogin, db: Session = Depends(get_db)) -> TokenOut:
@@ -53,9 +62,15 @@ def me(
 ) -> UserOut:
     """Return the currently logged-in user's profile + diagnosis status."""
     profile = UserProfileRepository(db).get_by_user_id(current_user.id)
+    enrollment = EnrollmentService(db).get_for_user(current_user.id)
     return UserOut(
         id=current_user.id,
         email=current_user.email,
         name=current_user.name,
         diagnosis_completed=bool(profile and profile.diagnosis_completed),
+        enrollment=(
+            EnrollmentRead.model_validate(enrollment)
+            if enrollment is not None
+            else None
+        ),
     )
