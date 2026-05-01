@@ -22,6 +22,11 @@ export default function DashboardPage() {
     enabled: isAuthenticated,
   });
 
+  // If diagnosis not done, redirect to diagnosis flow
+  useEffect(() => {
+    if (user && !user.diagnosis_completed) router.replace("/diagnosis");
+  }, [user, router]);
+
   const handleLogout = () => {
     logout();
     router.push("/login");

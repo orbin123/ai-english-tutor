@@ -8,6 +8,7 @@ from app.core.security import create_access_token
 from app.modules.auth.dependencies import get_current_user
 from app.modules.auth.exceptions import EmailAlreadyExists, InvalidCredentials
 from app.modules.auth.models import User
+from app.modules.auth.repository import UserProfileRepository
 from app.modules.auth.schemas import TokenOut, UserCreate, UserLogin, UserOut
 from app.modules.auth.service import AuthService
 
@@ -46,6 +47,15 @@ def login(payload: UserLogin, db: Session = Depends(get_db)) -> TokenOut:
     return TokenOut(access_token=token)
 
 @router.get("/me", response_model=UserOut)
-def me(current_user: User = Depends(get_current_user)) -> User:
-    """Return the currently logged-in user's profile."""
-    return current_user
+def me(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserOut:
+    """Return the currently logged-in user's profile + diagnosis status."""
+    profile = UserProfileRepository(db).get_by_user_id(current_user.id)
+    return UserOut(
+        id=current_user.id,
+        email=current_user.email,
+        name=current_user.name,
+        diagnosis_completed=bool(profile and profile.diagnosis_completed),
+    )

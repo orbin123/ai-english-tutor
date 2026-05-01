@@ -11,10 +11,15 @@ export function useLogin() {
   const setToken = useAuthStore((s) => s.setToken);
 
   return useMutation({
-    mutationFn: (data: LoginInput) => authApi.login(data),
-    onSuccess: (res) => {
-      setToken(res.access_token);  // saves to localStorage + store
-      router.push("/dashboard");
+    mutationFn: async (data: LoginInput) => {
+      const token = await authApi.login(data);
+      // Save token first, then fetch /me with it
+      setToken(token.access_token);
+      const me = await authApi.me();
+      return me;
+    },
+    onSuccess: (me) => {
+      router.push(me.diagnosis_completed ? "/dashboard" : "/diagnosis");
     },
   });
 }
