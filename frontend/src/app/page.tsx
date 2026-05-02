@@ -2362,7 +2362,7 @@ function Footer() {
 export default function LandingPage() {
   const router = useRouter();
 
-  const handleCTA = () => router.push("/login");
+  const handleCTA = () => router.push("/register");
 
   return (
     <div
