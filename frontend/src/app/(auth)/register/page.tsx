@@ -3,13 +3,23 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
+
 import { registerSchema, type RegisterInput } from "@/lib/validators/auth";
 import { useRegister } from "@/hooks/useRegister";
 import { getApiErrorMessage } from "@/lib/errors";
 
+import { AuthCard } from "@/components/auth/AuthCard";
+import { FormField } from "@/components/auth/FormField";
+import { SubmitButton } from "@/components/auth/SubmitButton";
+import { ServerErrorBanner } from "@/components/auth/ServerErrorBanner";
+import {
+  SocialDivider,
+  GoogleButton,
+} from "@/components/auth/SocialDivider";
+
 export default function RegisterPage() {
   const {
-    register: field,  // renamed to avoid clash with our hook below
+    register: field,
     handleSubmit,
     formState: { errors },
   } = useForm<RegisterInput>({
@@ -20,89 +30,65 @@ export default function RegisterPage() {
 
   const onSubmit = (data: RegisterInput) => registerUser.mutate(data);
 
+  const serverError = registerUser.error ? getApiErrorMessage(registerUser.error) : null;
+
   return (
-    <main className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-md space-y-6 rounded-lg border border-gray-200 p-8">
-        <h1 className="text-2xl font-semibold">Create your account</h1>
-
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          {/* Name */}
-          <div>
-            <label htmlFor="name" className="block text-sm font-medium">
-              Name
-            </label>
-            <input
-              id="name"
-              type="text"
-              autoComplete="name"
-              {...field("name")}
-              className="mt-1 w-full rounded border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
-            />
-            {errors.name && (
-              <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
-            )}
-          </div>
-
-          {/* Email */}
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              {...field("email")}
-              className="mt-1 w-full rounded border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
-            />
-            {errors.email && (
-              <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>
-            )}
-          </div>
-
-          {/* Password */}
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="new-password"
-              {...field("password")}
-              className="mt-1 w-full rounded border border-gray-300 px-3 py-2 outline-none focus:border-blue-500"
-            />
-            {errors.password && (
-              <p className="mt-1 text-sm text-red-600">
-                {errors.password.message}
-              </p>
-            )}
-          </div>
-
-          {/* Server error */}
-          {registerUser.error && (
-            <p className="rounded bg-red-50 p-2 text-sm text-red-700">
-              {getApiErrorMessage(registerUser.error)}
-            </p>
-          )}
-
-          {/* Submit */}
-          <button
-            type="submit"
-            disabled={registerUser.isPending}
-            className="w-full rounded bg-blue-600 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {registerUser.isPending ? "Creating account..." : "Sign up"}
-          </button>
-        </form>
-
-        <p className="text-center text-sm text-gray-600">
+    <AuthCard
+      title="Create your account"
+      subtitle="Start your personalized English coaching today"
+      footer={
+        <>
           Already have an account?{" "}
-          <Link href="/login" className="text-blue-600 hover:underline">
+          <Link
+            href="/login"
+            className="font-semibold hover:underline"
+            style={{ color: "oklch(52% 0.18 240)" }}
+          >
             Log in
           </Link>
-        </p>
-      </div>
-    </main>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit(onSubmit)} noValidate>
+        <ServerErrorBanner message={serverError} />
+
+        <FormField
+          label="Name"
+          type="text"
+          autoComplete="name"
+          placeholder="Your full name"
+          error={errors.name?.message}
+          {...field("name")}
+        />
+
+        <FormField
+          label="Email"
+          type="email"
+          autoComplete="email"
+          placeholder="you@example.com"
+          error={errors.email?.message}
+          {...field("email")}
+        />
+
+        <FormField
+          label="Password"
+          type="password"
+          autoComplete="new-password"
+          placeholder="Create a password"
+          error={errors.password?.message}
+          hint="At least 8 characters"
+          {...field("password")}
+        />
+
+        <div className="mt-6">
+          <SubmitButton loading={registerUser.isPending} loadingText="Creating account...">
+            Create account
+          </SubmitButton>
+        </div>
+
+        <SocialDivider />
+        <GoogleButton />
+      </form>
+    </AuthCard>
   );
 }
