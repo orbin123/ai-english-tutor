@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AxiosError } from "axios";
 
 import { useAuthStore } from "@/store/authStore";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { authApi } from "@/lib/auth-api";
 import { useNextTask } from "@/hooks/useNextTask";
 import { useSubmitResponse } from "@/hooks/useSubmitResponse";
@@ -21,18 +22,13 @@ type FormValues = Record<string, string>;
 
 export default function TaskPage() {
   const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
-
-  // ─── Route guards ──────────────────────────────────────────
-  useEffect(() => {
-    if (!isAuthenticated) router.replace("/login");
-  }, [isAuthenticated, router]);
+  const { isReady } = useRequireAuth();
 
   // Force diagnosis-first: if not done, send them there
   const meQuery = useQuery({
     queryKey: ["me"],
     queryFn: authApi.me,
-    enabled: isAuthenticated,
+    enabled: isReady,
   });
   const me = meQuery.data;
   useEffect(() => {
@@ -41,7 +37,7 @@ export default function TaskPage() {
 
   // ─── Data ──────────────────────────────────────────────────
   const taskQuery = useNextTask(
-    isAuthenticated && !!me?.diagnosis_completed && !!me?.enrollment,
+    isReady && !!me?.diagnosis_completed && !!me?.enrollment,
   );
   const submit = useSubmitResponse();
 
@@ -81,7 +77,7 @@ export default function TaskPage() {
   };
 
   // ─── Render states ─────────────────────────────────────────
-  if (!isAuthenticated) return null;
+  if (!isReady) return null;
 
   if (meQuery.isLoading) {
     return (

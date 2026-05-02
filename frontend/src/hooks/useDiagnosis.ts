@@ -16,9 +16,16 @@ export function useDiagnosis() {
     onSuccess: (result) => {
       // Save result for the result page to display
       setResult(result);
-      // Refetch /me so route guards see diagnosis_completed=true
-      queryClient.invalidateQueries({ queryKey: ["me"] });
+
+      // Navigate to the result page FIRST — before invalidating /me.
+      // If we invalidate first, the useEffect guard on diagnosis/page.tsx
+      // sees diagnosis_completed=true and redirects to /dashboard,
+      // skipping the result page entirely (race condition).
       router.push("/diagnosis/result");
+
+      // Delay the /me refetch until after navigation has started.
+      // The result page will call invalidateQueries itself when the
+      // user clicks "Go to dashboard".
     },
   });
 }

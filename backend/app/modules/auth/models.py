@@ -3,7 +3,7 @@
 from enum import Enum
 
 from sqlalchemy import Boolean
-from sqlalchemy import Enum as SQLAlchemyEnum, ForeignKey, String 
+from sqlalchemy import Enum as SQLAlchemyEnum, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -36,7 +36,9 @@ class User(Base, IDMixin, TimestampMixin):
     Represents a user account.
 
     Holds only authentication-critical data (email, password hash, name).
-    Learning-related data (level, goal, skill scores) lives in UserProfile
+    Learning-related data (level, goal, skill scores) lives in UserProfile.
+
+    password_hash is nullable because Google OAuth users have no password.
     """
 
     __tablename__ = "users"
@@ -48,9 +50,11 @@ class User(Base, IDMixin, TimestampMixin):
         nullable=False,
     )
 
-    password_hash: Mapped[str] = mapped_column(
+    # Nullable: Google OAuth users don't have a password
+    password_hash: Mapped[str | None] = mapped_column(
         String(255),
-        nullable=False
+        nullable=True,
+        default=None,
     )
 
     name: Mapped[str] = mapped_column(
@@ -61,12 +65,56 @@ class User(Base, IDMixin, TimestampMixin):
     # Relationships
     profile: Mapped["UserProfile"] = relationship(
         back_populates="user",
-        cascade = "all, delete-orphan",
+        cascade="all, delete-orphan",
         uselist=False,
     )
 
+    oauth_accounts: Mapped[list["OAuthAccount"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
     def __repr__(self) -> str:
-        return f"<User(id={self.id}, email={self.email!r})"
+        return f"<User(id={self.id}, email={self.email!r})>"
+
+
+class OAuthAccount(Base, IDMixin, TimestampMixin):
+    """
+    Stores a linked OAuth provider account for a user.
+
+    One user can have multiple OAuth accounts (Google, GitHub, etc.).
+    provider + provider_user_id is unique — prevents duplicate links.
+    """
+
+    __tablename__ = "oauth_accounts"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # e.g. "google"
+    provider: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )
+
+    # The user's ID on Google's side (the "sub" field from Google's token)
+    provider_user_id: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+    # Relationships
+    user: Mapped["User"] = relationship(back_populates="oauth_accounts")
+
+    def __repr__(self) -> str:
+        return (
+            f"<OAuthAccount(id={self.id}, provider={self.provider!r}, "
+            f"user_id={self.user_id})>"
+        )
+
 
 # User Profile Base Class
 class UserProfile(Base, IDMixin, TimestampMixin):

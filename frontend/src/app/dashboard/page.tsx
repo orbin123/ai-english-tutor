@@ -5,27 +5,24 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { authApi } from "@/lib/auth-api";
+import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { coursesApi } from "@/lib/courses-api";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { isAuthenticated, logout } = useAuthStore();
-
-  // Protect route: kick out if no token
-  useEffect(() => {
-    if (!isAuthenticated) router.replace("/login");
-  }, [isAuthenticated, router]);
+  const { logout } = useAuthStore();
+  const { isReady } = useRequireAuth();
 
   // Fetch user info using the token (proves token works)
   const { data: user, isLoading } = useQuery({
     queryKey: ["me"],
     queryFn: authApi.me,
-    enabled: isAuthenticated,
+    enabled: isReady,
   });
   const coursesQuery = useQuery({
     queryKey: ["courses"],
     queryFn: coursesApi.list,
-    enabled: isAuthenticated && !!user?.diagnosis_completed && !user?.enrollment,
+    enabled: isReady && !!user?.diagnosis_completed && !user?.enrollment,
   });
 
   // If diagnosis not done, redirect to diagnosis flow
@@ -38,7 +35,7 @@ export default function DashboardPage() {
     router.push("/login");
   };
 
-  if (!isAuthenticated) return null;
+  if (!isReady) return null;
 
   if (isLoading) {
     return (

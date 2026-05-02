@@ -1,5 +1,7 @@
 "use client";
 
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
 export function SocialDivider() {
   return (
     <div className="my-6 flex items-center gap-3">
@@ -22,9 +24,15 @@ export function SocialDivider() {
 }
 
 export function GoogleButton() {
+  const handleGoogleLogin = () => {
+    // Redirect the browser to the backend — it will redirect to Google
+    window.location.href = `${BACKEND_URL}/auth/google/login`;
+  };
+
   return (
     <button
       type="button"
+      onClick={handleGoogleLogin}
       className="w-full rounded-full py-3 text-[14.5px] font-semibold flex items-center justify-center gap-2.5 bg-white border border-slate-200 hover:bg-slate-50 transition-colors"
       style={{ color: "oklch(22% 0.09 245)" }}
     >

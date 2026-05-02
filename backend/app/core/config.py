@@ -27,6 +27,14 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 30
 
+    # Google OAuth
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = "http://localhost:8000/auth/google/callback"
+
+    # Frontend
+    frontend_url: str = "http://localhost:3000"
+
     # AI / LLM
     OPENAI_API_KEY: str
     LANGCHAIN_TRACING_V2: bool = True

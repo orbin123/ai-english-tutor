@@ -10,7 +10,7 @@ populated before any mapper is configured. This:
 Add every new model to this file as you create it.
 """
 
-from app.modules.auth.models import User, UserProfile  # noqa: F401
+from app.modules.auth.models import User, UserProfile, OAuthAccount  # noqa: F401
 from app.modules.skills.models import Skill, UserSkillScore  # noqa: F401
 from app.modules.curriculum.models import (  # noqa: F401
     Course, UserEnrollment, EnrollmentSkillHistory,

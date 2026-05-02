@@ -17,7 +17,8 @@ load_dotenv("../.env")
 
 app = FastAPI(
     title="LingosAI - English Tutor API",
-    version='0.1.0'
+    version='0.1.0',
+    redirect_slashes=False,  # prevents 307 redirect on /auth/google/callback
 )
 
 app.add_middleware(

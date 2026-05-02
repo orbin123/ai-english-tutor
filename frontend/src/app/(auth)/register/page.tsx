@@ -6,6 +6,7 @@ import Link from "next/link";
 
 import { registerSchema, type RegisterInput } from "@/lib/validators/auth";
 import { useRegister } from "@/hooks/useRegister";
+import { useRedirectIfAuthed } from "@/hooks/useRedirectIfAuthed";
 import { getApiErrorMessage } from "@/lib/errors";
 
 import { AuthCard } from "@/components/auth/AuthCard";
@@ -27,6 +28,7 @@ export default function RegisterPage() {
   });
 
   const registerUser = useRegister();
+  useRedirectIfAuthed();
 
   const onSubmit = (data: RegisterInput) => registerUser.mutate(data);
 
