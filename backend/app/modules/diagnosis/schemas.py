@@ -8,7 +8,8 @@ from app.modules.auth.models import (
     UserGoal,
 )
 
-# Nested input pieces
+# ── Input schemas ──────────────────────────────────────────────────────────
+
 class SelfAssessmentIn(BaseModel):
     """User's own answers to the 5 self-assessment questions."""
     self_assessed_level: SelfAssessedLevel
@@ -31,16 +32,17 @@ class WritingIn(BaseModel):
 
 
 class ReadAloudIn(BaseModel):
-    """User's audio submission for the read-aloud task.
-    
-    For MVP: audio_url points to a pre-uploaded file. For our stub today,
-    we just accept it and return hardcoded scores.
-    """
-    passage_id: str  # e.g. "diag_passage_v1"
-    audio_url: str
-    duration_seconds: float = Field(gt=0)
+    """User's read-aloud result after Whisper transcription.
 
-# The top-level request
+    The frontend uploads audio to POST /diagnosis/transcribe first,
+    receives back the transcript and duration, then includes them here
+    in the main submit payload — keeping submit as a clean JSON endpoint.
+    """
+    passage_id: str           # e.g. "diag_passage_v1"
+    transcript: str           # Whisper output — what the user actually said
+    duration_seconds: float = Field(gt=0)  # total recording length in seconds
+
+
 class DiagnosisSubmitRequest(BaseModel):
     """Full payload for POST /diagnosis/submit."""
     self_assessment: SelfAssessmentIn
@@ -48,9 +50,43 @@ class DiagnosisSubmitRequest(BaseModel):
     writing: WritingIn
     read_aloud: ReadAloudIn
 
-# The response
+
+# ── Transcription response (POST /diagnosis/transcribe) ───────────────────
+
+class TranscribeResponse(BaseModel):
+    """Returned by POST /diagnosis/transcribe.
+
+    The frontend receives this and includes transcript + duration_seconds
+    in its final DiagnosisSubmitRequest.
+    """
+    transcript: str
+    duration_seconds: float
+
+
+# ── Feedback sub-schemas ───────────────────────────────────────────────────
+
+class WeakSkillExplanationOut(BaseModel):
+    """Plain-English explanation for one weak skill — returned to frontend."""
+    skill_name: str
+    what_it_means: str
+    why_it_matters: str
+    what_to_expect: str
+
+
+class DiagnosisFeedbackOut(BaseModel):
+    """AI-generated feedback included in the diagnosis response."""
+    estimated_level_label: str
+    summary: str
+    weak_skill_explanations: list[WeakSkillExplanationOut]
+    motivation: str
+    first_week_focus: str
+
+
+# ── Final response ─────────────────────────────────────────────────────────
+
 class DiagnosisSubmitResponse(BaseModel):
     """Response after diagnosis is computed."""
     skill_scores: dict[str, float]      # {"grammar": 3.0, "vocabulary": 2.7, ...}
-    weakest_skills: list[str]            # 2 lowest, by score
+    weakest_skills: list[str]           # 2 lowest, by score
+    feedback: DiagnosisFeedbackOut      # AI-generated interpretation
     next_step: str = "Your first personalized task is ready."

@@ -2,6 +2,10 @@
 
 from sqlalchemy.orm import Session
 
+from app.ai.agents.diagnosis_feedback import (
+    DiagnosisFeedbackOutput,
+    generate_diagnosis_feedback,
+)
 from app.modules.auth.repository import UserProfileRepository
 from app.modules.diagnosis.evaluators import (
     RuleBasedEvaluator,
@@ -21,30 +25,22 @@ from app.modules.skills.repository import (
 
 
 class DiagnosisService:
-    """Orchestrates the diagnosis flow: evaluators → scoring → DB writes.
-    
-    Owns the transaction boundary: one commit at the end.
-    """
+    """Orchestrates the diagnosis flow: evaluators → scoring → DB writes → AI feedback."""
 
-    # Skills that come from indirect signals (not from a real speaking task yet).
     ESTIMATED_SKILLS: set[str] = {"pronunciation", "tone"}
 
     def __init__(self, db: Session) -> None:
         self.db = db
-
-        # Repos
         self.profiles = UserProfileRepository(db)
         self.skills = SkillRepository(db)
         self.scores = UserSkillScoreRepository(db)
-
-        # Evaluators (stubs for MVP — real LLM/Whisper later)
         self.rule_eval = RuleBasedEvaluator()
         self.text_eval = TextEvaluator()
         self.speech_eval = SpeechEvaluator()
 
-    def run_diagnosis(
+    async def run_diagnosis(
         self, *, user_id: int, payload: DiagnosisSubmitRequest
-    ) -> dict[str, float]:
+    ) -> tuple[dict[str, float], DiagnosisFeedbackOutput]:
         """Process a complete diagnosis submission.
 
         Steps:
@@ -53,13 +49,14 @@ class DiagnosisService:
           3. Apply master scoring formula → 7 skill scores
           4. Upsert each score into user_skill_scores
           5. Update user_profile (self-assessment fields + diagnosis_completed)
-          6. Single commit at the end
+          6. Single DB commit
+          7. Call AI feedback agent with scores → get human-friendly feedback
 
         Returns:
-            dict mapping skill name → final score (for API response)
+            Tuple of (skill_scores dict, DiagnosisFeedbackOutput)
 
         Raises:
-            DiagnosisInvalidPayload: profile missing (shouldn't happen post-signup)
+            DiagnosisInvalidPayload: profile missing
             DiagnosisAlreadyCompleted: user already diagnosed
         """
         # 1. Load + guard profile
@@ -82,9 +79,10 @@ class DiagnosisService:
             prompt_id=payload.writing.prompt_id,
             response_text=payload.writing.response_text,
         )
+        # Speech evaluator now uses the Whisper transcript (not a stub audio_url)
         speech = self.speech_eval.evaluate_read_aloud(
             passage_id=payload.read_aloud.passage_id,
-            audio_url=payload.read_aloud.audio_url,
+            transcript=payload.read_aloud.transcript,
             duration_seconds=payload.read_aloud.duration_seconds,
         )
 
@@ -111,15 +109,26 @@ class DiagnosisService:
                 is_estimated=skill_name in self.ESTIMATED_SKILLS,
             )
 
-        # 5. Update profile (self-assessment + completed flag)
+        # 5. Update profile
         profile.self_assessed_level = sa.self_assessed_level
         profile.goal = sa.goal
         profile.daily_time_minutes = sa.daily_time_minutes
         profile.content_exposure = sa.content_exposure
-        profile.interests = ",".join(sa.interests)  # JSON-y list → CSV string
+        profile.interests = ",".join(sa.interests)
         profile.diagnosis_completed = True
 
-        # 6. Commit transaction 
+        # 6. Commit transaction
         self.db.commit()
 
-        return skill_scores
+        # 7. Call AI feedback agent
+        weakest = sorted(skill_scores.items(), key=lambda kv: kv[1])[:2]
+        weakest_skill_names = [name for name, _ in weakest]
+
+        feedback = await generate_diagnosis_feedback(
+            self_assessed_level=sa.self_assessed_level.value,
+            goal=sa.goal.value,
+            skill_scores=skill_scores,
+            weakest_skills=weakest_skill_names,
+        )
+
+        return skill_scores, feedback

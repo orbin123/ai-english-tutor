@@ -12,6 +12,7 @@ dependencies = [
     "langchain>=1.2.15",
     "langchain-openai>=1.2.1",
     "langsmith>=0.7.37",
+    "openai>=1.0.0",
     "passlib[bcrypt]>=1.7.4",
     "pinecone>=8.1.2",
     "psycopg[binary]>=3.3.3",
