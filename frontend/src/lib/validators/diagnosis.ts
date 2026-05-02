@@ -15,11 +15,10 @@ export const selfAssessmentSchema = z.object({
     .min(5, "Minimum 5 minutes")
     .max(240, "Maximum 240 minutes"),
   content_exposure: z.enum(EXPOSURES),
-  // Up to 3 interests; allow 0 (optional)
   interests: z.array(z.string().min(1)).max(3),
 });
 
-// Step 2: fill-blank — must be exactly 5 non-empty answers
+// Step 2: fill-blank
 export const fillBlankSchema = z.object({
   answers: z
     .array(z.string().min(1, "Please answer this blank"))
@@ -34,11 +33,22 @@ export const writingSchema = z.object({
     .max(2000, "Maximum 2000 characters"),
 });
 
-// Step 4: read-aloud (stubbed — no real audio yet)
+// Step 4: read-aloud — user must record audio and receive a transcript back
+// from POST /diagnosis/transcribe before submitting the main form.
+// audioBlob holds the raw recording in memory only (not submitted in JSON).
+// transcript + duration_seconds come from the transcribe response and ARE
+// included in the final JSON submit.
 export const readAloudSchema = z.object({
-  acknowledged: z.literal(true, {
-    message: "Please confirm you read the passage aloud",
-  }),
+  // The recorded audio blob — stored in form state only, never sent as JSON.
+  // We use z.instanceof(Blob) so the form validates that a recording exists.
+  audioBlob: z
+    .instanceof(typeof window !== "undefined" ? Blob : Object as unknown as typeof Blob)
+    .refine((b) => (b as Blob).size > 0, {
+      message: "Please record your voice reading the passage",
+    }),
+  // From Whisper — populated after transcribe call succeeds
+  transcript: z.string().min(1, "Transcription is missing — please record again"),
+  duration_seconds: z.number().positive("Duration must be greater than 0"),
 });
 
 // Combined schema — used for the whole multi-step form

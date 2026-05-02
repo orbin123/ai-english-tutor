@@ -23,9 +23,17 @@ api.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401 && typeof window !== "undefined") {
-            localStorage.removeItem("token");
-            // Hard redirect - simplest way to fully reset state
-            window.location.href = "/login";
+            // Don't auto-redirect on auth endpoints — let the form handle it
+            const url: string = error.config?.url ?? "";
+            const isAuthEndpoint = url.includes("/auth/login") || url.includes("/auth/signup");
+
+            if (!isAuthEndpoint) {
+                // Token is expired or invalid on a protected route — force logout
+                localStorage.removeItem("token");
+                const { useAuthStore } = require("@/store/authStore");
+                useAuthStore.getState().logout();
+                window.location.href = "/login";
+            }
         }
         return Promise.reject(error);
     }

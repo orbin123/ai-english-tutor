@@ -3,9 +3,11 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 import { loginSchema, type LoginInput } from "@/lib/validators/auth";
 import { useLogin } from "@/hooks/useLogin";
+import { useRedirectIfAuthed } from "@/hooks/useRedirectIfAuthed";
 import { getApiErrorMessage } from "@/lib/errors";
 
 import { AuthCard } from "@/components/auth/AuthCard";
@@ -17,7 +19,16 @@ import {
   GoogleButton,
 } from "@/components/auth/SocialDivider";
 
+// Map query param error codes to user-friendly messages
+const OAUTH_ERRORS: Record<string, string> = {
+  google_failed: "Google sign-in failed. Please try again or use email and password.",
+};
+
 export default function LoginPage() {
+  const searchParams = useSearchParams();
+  const oauthError = searchParams.get("error");
+  const oauthErrorMessage = oauthError ? (OAUTH_ERRORS[oauthError] ?? "Sign-in failed. Please try again.") : null;
+  useRedirectIfAuthed();
   const {
     register,
     handleSubmit,
@@ -30,7 +41,7 @@ export default function LoginPage() {
 
   const onSubmit = (data: LoginInput) => login.mutate(data);
 
-  const serverError = login.error ? getApiErrorMessage(login.error) : null;
+  const serverError = login.error ? getApiErrorMessage(login.error) : (oauthErrorMessage ?? null);
 
   return (
     <AuthCard

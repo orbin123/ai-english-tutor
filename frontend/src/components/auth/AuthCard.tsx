@@ -39,6 +39,44 @@ export function AuthCard({ title, subtitle, children, footer }: AuthCardProps) {
         }}
       />
 
+      {/* Top Navigation Bar */}
+      <nav className="fixed top-0 left-0 right-0 z-50 px-10">
+        <div className="max-w-[1180px] mx-auto flex items-center h-[68px]">
+          <Link
+            href="/"
+            className="flex items-center gap-2 group"
+            aria-label="LingosAI home"
+          >
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center transition-transform group-hover:scale-105"
+              style={{ background: "oklch(52% 0.18 240)" }}
+            >
+              <svg width="17" height="17" viewBox="0 0 17 17" fill="none">
+                <path
+                  d="M3 13L8.5 4L14 13"
+                  stroke="white"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                <path
+                  d="M5.2 10h6.6"
+                  stroke="white"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </div>
+            <span
+              className="font-bold text-[17px] tracking-tight"
+              style={{ color: "oklch(18% 0.09 245)", letterSpacing: "-0.3px" }}
+            >
+              LingosAI
+            </span>
+          </Link>
+        </div>
+      </nav>
+
       <div className="relative w-full max-w-[440px]">
         <div
           className="rounded-2xl bg-white/85 backdrop-blur-xl border border-white/90 px-8 py-10 sm:px-10 sm:py-12"
@@ -47,39 +85,6 @@ export function AuthCard({ title, subtitle, children, footer }: AuthCardProps) {
               "0 4px 32px rgba(80,110,180,0.13), 0 1.5px 6px rgba(80,120,200,0.07)",
           }}
         >
-          {/* Logo */}
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 mb-8 group"
-            aria-label="LingosAI home"
-          >
-            <div
-              className="w-9 h-9 rounded-[10px] flex items-center justify-center transition-transform group-hover:scale-105"
-              style={{ background: "oklch(52% 0.18 240)" }}
-            >
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                <path
-                  d="M3.5 14L9 4L14.5 14"
-                  stroke="white"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M5.7 10.5h6.6"
-                  stroke="white"
-                  strokeWidth="1.7"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </div>
-            <span
-              className="text-lg font-bold tracking-tight"
-              style={{ color: "oklch(18% 0.09 245)", letterSpacing: "-0.02em" }}
-            >
-              LingosAI
-            </span>
-          </Link>
 
           {/* Title + subtitle */}
           <h1
