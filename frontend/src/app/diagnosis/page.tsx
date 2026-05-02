@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
@@ -16,25 +17,56 @@ import { useAuthStore } from "@/store/authStore";
 import { authApi } from "@/lib/auth-api";
 import { getApiErrorMessage } from "@/lib/errors";
 
-// ────────────────────────────────────────────────────────────────────
-// Static content for the diagnosis tasks
-// ────────────────────────────────────────────────────────────────────
+/* ──────────────────────────────────────────────────────────────────────────
+ *  LingosAI — Diagnosis page
+ *  4-step diagnostic the user fills in right after signup.
+ *  Visual language matches the LingosAI landing page (soft blue + dot grid +
+ *  glassy white cards + pill buttons).
+ * ────────────────────────────────────────────────────────────────────────── */
 
-// Fill-blank questions — answers must match backend's FILL_BLANK_ANSWERS_V1
-const FILL_BLANK_QUESTIONS = [
-  'She ____ to school every morning.       (hint: "go" in correct form)',
-  'I ____ rice for lunch yesterday.        (hint: "eat" in past tense)',
-  'It always ____ a lot in July.           (hint: "rain" in correct form)',
-  'They ____ in Mumbai for ten years.      (hint: "live" in past tense)',
-  'The novel ____ by a famous author.      (hint: "write" in passive past)',
+const STEP_LABELS = [
+  "About you",
+  "Fill the blanks",
+  "Short writing",
+  "Read aloud",
+] as const;
+
+const PROFICIENCY_OPTIONS = [
+  { label: "Beginner", value: "beginner" },
+  { label: "Intermediate", value: "intermediate" },
+  { label: "Advanced", value: "advanced" },
 ];
+const GOAL_OPTIONS = [
+  { label: "Casual", value: "casual" },
+  { label: "Professional", value: "professional" },
+  { label: "Academic", value: "academic" },
+];
+const EXPOSURE_OPTIONS = [
+  { label: "Never", value: "none" },
+  { label: "Sometimes", value: "low" },
+  { label: "Often", value: "medium" },
+  { label: "Daily", value: "high" },
+];
+const INTERESTS = ["tech", "business", "movies", "sports", "travel", "music"] as const;
 
-const READ_ALOUD_PASSAGE = `Every morning I wake up early and walk in the park. The fresh air helps me think clearly. I greet a few neighbours, finish a short jog, and return home feeling ready for the day.`;
+const FILL_QUESTIONS = [
+  { sentence: "She ___ to school every morning.", hint: '"go"' },
+  { sentence: "I ___ rice for lunch yesterday.", hint: '"eat" in past tense' },
+  { sentence: "It always ___ a lot in July.", hint: '"rain"' },
+  { sentence: "They ___ in Mumbai for ten years.", hint: '"live" in past tense' },
+  { sentence: "The novel ___ by a famous author.", hint: '"write" — passive past' },
+] as const;
 
-// 4 step labels for the stepper
-const STEPS = ["About you", "Fill the blanks", "Short writing", "Read aloud"];
+const PASSAGE =
+  "Every morning I wake up early and walk in the park. The fresh air helps me think clearly. I greet a few neighbours, finish a short jog, and return home feeling ready for the day.";
 
-// Step-1 default values (so the radios/select aren't undefined)
+const FIELDS_PER_STEP = [
+  ["self_assessment"],
+  ["fill_blank"],
+  ["writing"],
+  ["read_aloud"],
+] as const;
+
 const DEFAULT_VALUES: DiagnosisFormInput = {
   self_assessment: {
     self_assessed_level: "beginner",
@@ -48,12 +80,513 @@ const DEFAULT_VALUES: DiagnosisFormInput = {
   read_aloud: { acknowledged: false as unknown as true }, // satisfies literal(true) at runtime
 };
 
-// ────────────────────────────────────────────────────────────────────
+/* ── Inline icons ──────────────────────────────────────────────────────── */
+function ArrowRightIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function ArrowLeftIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M13 8H3M7 4l-4 4 4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function CheckIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
+      <path d="M3 7.5L6 10.5L11 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function SpeakerIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M3 6v4h2.5L9 12.5v-9L5.5 6H3z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M11.5 5.5a3.5 3.5 0 0 1 0 5M13 4a5.5 5.5 0 0 1 0 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+function SpinIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={`animate-spin ${className}`} width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.3" strokeWidth="3" />
+      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
 
+/* ── Stepper ──────────────────────────────────────────────────────────── */
+function Stepper({ current }: { current: number }) {
+  return (
+    <ol className="mb-8 flex items-center gap-1 sm:gap-2" aria-label="Progress">
+      {STEP_LABELS.map((label, i) => {
+        const done = i < current;
+        const active = i === current;
+        const upcoming = i > current;
+        return (
+          <li key={label} className="flex flex-1 items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div
+                className={[
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-bold transition-colors",
+                  done && "bg-blue-600 text-white",
+                  active && "bg-[#0a0f1f] text-white ring-4 ring-blue-100",
+                  upcoming && "border border-slate-300 bg-white text-slate-400",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                aria-current={active ? "step" : undefined}
+              >
+                {done ? <CheckIcon /> : i + 1}
+              </div>
+              <span
+                className={[
+                  "hidden text-[13px] sm:inline",
+                  active ? "font-semibold text-[#0a1f44]" : done ? "font-medium text-[#0a1f44]" : "text-slate-400",
+                ].join(" ")}
+              >
+                {label}
+              </span>
+            </div>
+            {i < STEP_LABELS.length - 1 && (
+              <div className="mx-1 h-px flex-1 overflow-hidden bg-slate-200">
+                <div
+                  className="h-full bg-blue-600 transition-all duration-500"
+                  style={{ width: i < current ? "100%" : "0%" }}
+                />
+              </div>
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/* ── Eyebrow pill ─────────────────────────────────────────────────────── */
+function Eyebrow({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-white px-3 py-1 text-[12.5px] font-semibold text-blue-800 shadow-sm">
+      <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
+      {children}
+    </div>
+  );
+}
+
+/* ── Segmented control ────────────────────────────────────────────────── */
+interface SegmentedProps {
+  options: ReadonlyArray<{ label: string; value: string }>;
+  value: string | undefined;
+  onChange: (v: string) => void;
+  ariaLabel?: string;
+}
+function Segmented({ options, value, onChange, ariaLabel }: SegmentedProps) {
+  return (
+    <div role="radiogroup" aria-label={ariaLabel} className="flex flex-wrap gap-2">
+      {options.map((opt) => {
+        const selected = value === opt.value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            onClick={() => onChange(opt.value)}
+            className={[
+              "rounded-full px-4 py-2 text-[13.5px] font-semibold transition-all",
+              selected
+                ? "bg-[#0a0f1f] text-white shadow-[0_4px_14px_rgba(10,15,31,0.18)]"
+                : "border border-slate-200 bg-white text-[#0a1f44] hover:border-slate-300",
+            ].join(" ")}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── Field row card ───────────────────────────────────────────────────── */
+function FieldRow({
+  label,
+  helper,
+  error,
+  children,
+}: {
+  label: string;
+  helper?: string;
+  error?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-white px-6 py-4 shadow-[0_2px_10px_rgba(15,23,42,0.04)]">
+      <div className="mb-2">
+        <div className="text-[14.5px] font-semibold text-[#0a1f44]">{label}</div>
+        {helper && <div className="mt-0.5 text-[12.5px] text-slate-500">{helper}</div>}
+      </div>
+      {children}
+      {error && <p className="mt-2 text-[12.5px] font-medium text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+/* ── Step 1 ────────────────────────────────────────────────────────────── */
+function StepAboutYou({ form }: { form: ReturnType<typeof useForm<DiagnosisFormInput, unknown, DiagnosisInput>> }) {
+  const {
+    control,
+    register,
+    watch,
+    setValue,
+    formState: { errors },
+  } = form;
+
+  const studyMinutes = (watch("self_assessment.daily_time_minutes") as number) ?? 15;
+  const interests = (watch("self_assessment.interests") as string[]) ?? [];
+
+  const toggleInterest = (key: string) => {
+    const set = new Set(interests);
+    if (set.has(key)) set.delete(key);
+    else if (set.size < 3) set.add(key);
+    setValue("self_assessment.interests", Array.from(set) as string[], {
+      shouldValidate: true,
+    });
+  };
+
+  return (
+    <div className="space-y-3">
+      <Eyebrow>Quick self-assessment</Eyebrow>
+      <h2 className="text-2xl font-extrabold tracking-tight text-[#0a1f44] sm:text-[28px]">
+        Tell us about your English goals
+      </h2>
+      <p className="text-[15px] text-slate-600">
+        This helps us pick the right starting point for you.
+      </p>
+
+      <div className="mt-5 space-y-3">
+        <Controller
+          control={control}
+          name="self_assessment.self_assessed_level"
+          render={({ field }) => (
+            <FieldRow label="How would you rate your English?" error={errors.self_assessment?.self_assessed_level?.message}>
+              <Segmented
+                options={PROFICIENCY_OPTIONS}
+                value={field.value}
+                onChange={field.onChange}
+                ariaLabel="Proficiency level"
+              />
+            </FieldRow>
+          )}
+        />
+
+        <Controller
+          control={control}
+          name="self_assessment.goal"
+          render={({ field }) => (
+            <FieldRow label="What's your main goal?" error={errors.self_assessment?.goal?.message}>
+              <Segmented
+                options={GOAL_OPTIONS}
+                value={field.value}
+                onChange={field.onChange}
+                ariaLabel="Main goal"
+              />
+            </FieldRow>
+          )}
+        />
+
+        <FieldRow
+          label="Daily study time"
+          helper="How many minutes a day can you commit?"
+          error={errors.self_assessment?.daily_time_minutes?.message}
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex items-center overflow-hidden rounded-full border border-slate-200 bg-white">
+              <button
+                type="button"
+                aria-label="Decrease minutes"
+                onClick={() =>
+                  setValue("self_assessment.daily_time_minutes", Math.max(5, (studyMinutes ?? 15) - 5), { shouldValidate: true })
+                }
+                className="px-4 py-2 text-lg text-[#0a1f44] hover:bg-slate-50"
+              >
+                −
+              </button>
+              <input
+                type="number"
+                min={5}
+                max={120}
+                {...register("self_assessment.daily_time_minutes", { valueAsNumber: true })}
+                className="w-20 border-x border-slate-200 bg-white py-2 text-center text-[14.5px] font-semibold text-[#0a1f44] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              />
+              <button
+                type="button"
+                aria-label="Increase minutes"
+                onClick={() =>
+                  setValue("self_assessment.daily_time_minutes", Math.min(120, (studyMinutes ?? 15) + 5), { shouldValidate: true })
+                }
+                className="px-4 py-2 text-lg text-[#0a1f44] hover:bg-slate-50"
+              >
+                +
+              </button>
+            </div>
+            <span className="text-[13.5px] font-medium text-slate-500">minutes</span>
+          </div>
+          <input
+            type="range"
+            min={5}
+            max={120}
+            step={5}
+            value={studyMinutes ?? 15}
+            onChange={(e) => setValue("self_assessment.daily_time_minutes", Number(e.target.value), { shouldValidate: true })}
+            className="mt-4 w-full accent-blue-600"
+            aria-label="Daily study time slider"
+          />
+          <div className="mt-1 flex justify-between text-[11px] text-slate-400">
+            <span>5 min</span>
+            <span>120 min</span>
+          </div>
+        </FieldRow>
+
+        <Controller
+          control={control}
+          name="self_assessment.content_exposure"
+          render={({ field }) => (
+            <FieldRow
+              label="English content exposure"
+              helper="Movies, podcasts, books, social media, etc."
+              error={errors.self_assessment?.content_exposure?.message}
+            >
+              <Segmented
+                options={EXPOSURE_OPTIONS}
+                value={field.value}
+                onChange={field.onChange}
+                ariaLabel="Content exposure"
+              />
+            </FieldRow>
+          )}
+        />
+
+        <FieldRow
+          label="Pick up to 3 interests"
+          helper="Optional — helps us tailor your tasks."
+          error={errors.self_assessment?.interests?.message}
+        >
+          <div className="flex flex-wrap gap-2">
+            {INTERESTS.map((tag) => {
+              const selected = interests.includes(tag);
+              const limitReached = !selected && interests.length >= 3;
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => toggleInterest(tag)}
+                  disabled={limitReached}
+                  className={[
+                    "rounded-full px-3.5 py-1.5 text-[13px] font-semibold capitalize transition-all",
+                    selected
+                      ? "bg-blue-600 text-white shadow-[0_3px_10px_rgba(37,99,235,0.25)]"
+                      : "border border-slate-200 bg-white text-[#0a1f44] hover:border-slate-300 disabled:cursor-not-allowed disabled:opacity-50",
+                  ].join(" ")}
+                  aria-pressed={selected}
+                >
+                  {tag}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-[12px] text-slate-400">{interests.length}/3 selected</p>
+        </FieldRow>
+      </div>
+    </div>
+  );
+}
+
+/* ── Step 2 ────────────────────────────────────────────────────────────── */
+function StepFillBlanks({ form }: { form: ReturnType<typeof useForm<DiagnosisFormInput, unknown, DiagnosisInput>> }) {
+  const {
+    register,
+    formState: { errors },
+  } = form;
+
+  const blankRegex = /_+/;
+
+  return (
+    <div className="space-y-3">
+      <Eyebrow>Quick grammar check</Eyebrow>
+      <h2 className="text-2xl font-extrabold tracking-tight text-[#0a1f44] sm:text-[28px]">
+        Fill in the blanks
+      </h2>
+      <p className="text-[15px] text-slate-600">
+        Type one word per blank. The hint shows the base verb.
+      </p>
+
+      <ol className="mt-5 space-y-3">
+        {FILL_QUESTIONS.map((q, i) => {
+          const parts = q.sentence.split(blankRegex);
+          const fieldName = `fill_blank.answers.${i}` as const;
+          const fieldError = errors.fill_blank?.answers?.[i]?.message;
+          return (
+            <li key={i} className="rounded-2xl border border-slate-100 bg-white p-5 shadow-[0_2px_10px_rgba(15,23,42,0.04)]">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[12.5px] font-bold text-white">
+                  {i + 1}
+                </div>
+                <div className="flex-1">
+                  <p className="text-[15px] leading-relaxed text-[#0a1f44]">
+                    {parts[0]}
+                    <span className="mx-1 inline-block min-w-[60px] border-b-2 border-dashed border-blue-300 align-baseline" />
+                    {parts[1]}
+                  </p>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input
+                      {...register(`fill_blank.answers.${i}` as `fill_blank.answers.${number}`)}
+                      type="text"
+                      placeholder="Your answer"
+                      autoComplete="off"
+                      aria-label={`Answer ${i + 1}`}
+                      aria-describedby={fieldError ? `${fieldName}-err` : undefined}
+                      className={[
+                        "w-full rounded-lg border bg-white px-3.5 py-2 text-[14.5px] text-[#0a1f44] outline-none transition-colors",
+                        "placeholder:text-slate-400 focus:ring-2 focus:ring-blue-200/60",
+                        fieldError ? "border-red-400 focus:border-red-500" : "border-slate-200 focus:border-blue-500",
+                        "sm:max-w-xs",
+                      ].join(" ")}
+                    />
+                    <span className="text-[12.5px] italic text-slate-500">(hint: {q.hint})</span>
+                  </div>
+                  {fieldError && (
+                    <p id={`${fieldName}-err`} className="mt-2 text-[12.5px] font-medium text-red-600">
+                      {fieldError}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+/* ── Step 3 ────────────────────────────────────────────────────────────── */
+function StepWriting({ form }: { form: ReturnType<typeof useForm<DiagnosisFormInput, unknown, DiagnosisInput>> }) {
+  const {
+    register,
+    watch,
+    formState: { errors },
+  } = form;
+
+  const text = watch("writing.response_text") ?? "";
+  const wordCount = text.trim().length === 0 ? 0 : text.trim().split(/\s+/).length;
+
+  return (
+    <div className="space-y-3">
+      <Eyebrow>Free writing</Eyebrow>
+      <h2 className="text-2xl font-extrabold tracking-tight text-[#0a1f44] sm:text-[28px]">
+        Describe your typical day
+      </h2>
+      <p className="text-[15px] text-slate-600">
+        Write 3–5 sentences. Don&apos;t worry about perfection.
+      </p>
+
+      <div className="mt-5">
+        <textarea
+          {...register("writing.response_text")}
+          rows={6}
+          placeholder="I usually wake up at..."
+          aria-describedby="writing-counter"
+          className={[
+            "w-full rounded-2xl border bg-white px-4 py-3 text-[15px] leading-relaxed text-[#0a1f44] outline-none transition-colors",
+            "placeholder:text-slate-400 focus:ring-2 focus:ring-blue-200/60",
+            errors.writing?.response_text
+              ? "border-red-400 focus:border-red-500"
+              : "border-slate-200 focus:border-blue-500",
+            "shadow-[0_2px_10px_rgba(15,23,42,0.04)]",
+          ].join(" ")}
+        />
+        <div className="mt-2 flex items-center justify-between">
+          <p className="text-[12.5px] text-slate-500">Tip: include morning, afternoon, and evening.</p>
+          <p
+            id="writing-counter"
+            className={[
+              "text-[12.5px] font-semibold tabular-nums",
+              wordCount >= 30 ? "text-green-600" : "text-slate-500",
+            ].join(" ")}
+            aria-live="polite"
+          >
+            {wordCount} / 60 words
+          </p>
+        </div>
+        {errors.writing?.response_text && (
+          <p className="mt-2 text-[12.5px] font-medium text-red-600">{errors.writing.response_text.message}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Step 4 ────────────────────────────────────────────────────────────── */
+function StepReadAloud({ form }: { form: ReturnType<typeof useForm<DiagnosisFormInput, unknown, DiagnosisInput>> }) {
+  const {
+    register,
+    formState: { errors },
+  } = form;
+
+  return (
+    <div className="space-y-3">
+      <Eyebrow>Pronunciation</Eyebrow>
+      <h2 className="text-2xl font-extrabold tracking-tight text-[#0a1f44] sm:text-[28px]">
+        Read this passage out loud
+      </h2>
+      <p className="text-[15px] text-slate-600">
+        Audio recording is coming soon. For now, just check the box once you&apos;ve read the passage.
+      </p>
+
+      <blockquote className="mt-5 rounded-2xl border-l-4 border-blue-600 bg-blue-50/40 px-6 py-5 shadow-[0_2px_10px_rgba(15,23,42,0.04)]">
+        <p className="text-[17px] italic leading-relaxed text-[#0a1f44]">
+          &ldquo;{PASSAGE}&rdquo;
+        </p>
+      </blockquote>
+
+      <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 transition-colors hover:bg-slate-50">
+        <input
+          type="checkbox"
+          {...register("read_aloud.acknowledged")}
+          className="mt-0.5 h-4 w-4 rounded border-slate-300 accent-blue-600"
+          aria-describedby={errors.read_aloud?.acknowledged ? "ack-err" : undefined}
+        />
+        <span className="text-[14.5px] font-medium text-[#0a1f44]">
+          I have read the passage aloud.
+        </span>
+      </label>
+      {errors.read_aloud?.acknowledged && (
+        <p id="ack-err" className="mt-2 text-[12.5px] font-medium text-red-600">
+          {errors.read_aloud.acknowledged.message}
+        </p>
+      )}
+
+      <div className="mt-5 flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-[13px] text-blue-900">
+        <SpeakerIcon className="mt-0.5 shrink-0" />
+        <p>
+          Voice recording arrives in your next session — your speaking score is being estimated for now.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ── Page ─────────────────────────────────────────────────────────────── */
 export default function DiagnosisPage() {
   const router = useRouter();
   const { isAuthenticated } = useAuthStore();
-  const [step, setStep] = useState(0);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [serverError, setServerError] = useState<string | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   // Route guard: must be logged in
   useEffect(() => {
@@ -70,299 +603,167 @@ export default function DiagnosisPage() {
     if (me?.diagnosis_completed) router.replace("/dashboard");
   }, [me, router]);
 
-  const {
-    register,
-    handleSubmit,
-    trigger,
-    control,
-    formState: { errors },
-  } = useForm<DiagnosisFormInput, unknown, DiagnosisInput>({
+  const form = useForm<DiagnosisFormInput, unknown, DiagnosisInput>({
     resolver: zodResolver(diagnosisSchema),
     defaultValues: DEFAULT_VALUES,
     mode: "onTouched",
   });
 
-  const diagnosis = useDiagnosis();
+  const { mutate, isPending, error } = useDiagnosis();
 
-  // Validate only the current step's fields before moving on
+  // Surface API errors as banner copy
+  useEffect(() => {
+    if (error) {
+      setServerError(getApiErrorMessage(error));
+    }
+  }, [error]);
+
+  // Move focus to the first focusable input each time the step changes
+  useEffect(() => {
+    const node = cardRef.current;
+    if (!node) return;
+    const first = node.querySelector<HTMLElement>(
+      'input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), button[role="radio"]',
+    );
+    first?.focus({ preventScroll: true });
+  }, [currentStep]);
+
   const goNext = async () => {
-    const fieldGroups = [
-      ["self_assessment"],
-      ["fill_blank"],
-      ["writing"],
-      ["read_aloud"],
-    ] as const;
-    const ok = await trigger(fieldGroups[step]);
-    if (ok) setStep((s) => Math.min(s + 1, STEPS.length - 1));
+    setServerError(null);
+    const ok = await form.trigger(FIELDS_PER_STEP[currentStep] as any);
+    if (!ok) return;
+    if (currentStep < STEP_LABELS.length - 1) {
+      setCurrentStep((s) => s + 1);
+    }
   };
 
-  const goBack = () => setStep((s) => Math.max(s - 1, 0));
+  const goBack = () => {
+    setServerError(null);
+    if (currentStep > 0) setCurrentStep((s) => s - 1);
+  };
 
-  const onSubmit = (data: DiagnosisInput) => diagnosis.mutate(data);
+  const onSubmit = form.handleSubmit((values) => {
+    setServerError(null);
+    mutate(values as DiagnosisInput);
+  });
+
+  const isLastStep = currentStep === STEP_LABELS.length - 1;
 
   if (!isAuthenticated) return null;
 
   return (
-    <main className="flex min-h-screen items-start justify-center px-4 py-10">
-      <div className="w-full max-w-2xl space-y-6 rounded-lg border border-gray-200 p-8">
-        <h1 className="text-2xl font-semibold">English Diagnosis</h1>
+    <main 
+      className="relative min-h-screen w-full bg-gradient-to-b from-[#dbeafe] to-[#eff6ff]"
+      style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+    >
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
+      />
+      {/* Dot pattern overlay */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage: "radial-gradient(circle, rgba(37,99,235,0.10) 1px, transparent 1px)",
+          backgroundSize: "22px 22px",
+        }}
+      />
 
-        {/* Stepper */}
-        <ol className="flex gap-2 text-sm">
-          {STEPS.map((label, i) => (
-            <li
-              key={label}
-              className={`flex-1 rounded px-2 py-1 text-center ${
-                i === step
-                  ? "bg-blue-600 text-white"
-                  : i < step
-                  ? "bg-blue-100 text-blue-700"
-                  : "bg-gray-100 text-gray-500"
-              }`}
+      {/* Top bar */}
+      <header className="relative z-10 flex items-center justify-between px-5 py-5 sm:px-8">
+        <Link href="/" className="group inline-flex items-center gap-2" aria-label="LingosAI home">
+          <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-blue-600 transition-transform group-hover:scale-105">
+            <span className="text-[17px] font-extrabold leading-none text-white">A</span>
+          </div>
+          <span className="text-[17px] font-bold tracking-tight text-[#0a1f44]">LingosAI</span>
+        </Link>
+      </header>
+
+      <section className="relative z-10 mx-auto w-full max-w-[760px] px-4 pb-20 pt-2 sm:px-6">
+        <div
+          ref={cardRef}
+          className="rounded-3xl border border-white/90 bg-white/90 px-5 py-8 shadow-[0_8px_32px_rgba(15,23,42,0.06)] backdrop-blur-xl sm:px-10 sm:py-10"
+        >
+          <Stepper current={currentStep} />
+
+          <form onSubmit={onSubmit} noValidate>
+            <div
+              key={currentStep}
+              className="animate-[fadeIn_0.35s_ease]"
+              style={{ animationFillMode: "both" }}
             >
-              {i + 1}. {label}
-            </li>
-          ))}
-        </ol>
+              {currentStep === 0 && <StepAboutYou form={form} />}
+              {currentStep === 1 && <StepFillBlanks form={form} />}
+              {currentStep === 2 && <StepWriting form={form} />}
+              {currentStep === 3 && <StepReadAloud form={form} />}
+            </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          {/* ─── Step 1: Self assessment ──────────────────────────── */}
-          {step === 0 && (
-            <section className="space-y-4">
-              <p className="text-gray-600">
-                Tell us a little about yourself. This helps us pick the right
-                starting point.
-              </p>
-
-              <div>
-                <label className="block text-sm font-medium">
-                  How would you rate your English?
-                </label>
-                <select
-                  {...register("self_assessment.self_assessed_level")}
-                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-                >
-                  <option value="beginner">Beginner</option>
-                  <option value="intermediate">Intermediate</option>
-                  <option value="advanced">Advanced</option>
-                </select>
+            {serverError && (
+              <div
+                role="alert"
+                className="mt-6 flex items-start gap-2.5 rounded-full bg-red-50 px-4 py-2.5 text-[13.5px] font-medium text-red-700"
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="mt-0.5 shrink-0" aria-hidden>
+                  <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
+                  <path d="M8 5v3.5M8 11v.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+                <span>{serverError}</span>
               </div>
+            )}
 
-              <div>
-                <label className="block text-sm font-medium">
-                  What is your main goal?
-                </label>
-                <select
-                  {...register("self_assessment.goal")}
-                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-                >
-                  <option value="casual">Casual learning</option>
-                  <option value="professional">Professional / Job</option>
-                  <option value="academic">Academic / Studies</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium">
-                  How many minutes can you study per day?
-                </label>
-                <input
-                  type="number"
-                  min={5}
-                  max={240}
-                  {...register("self_assessment.daily_time_minutes")}
-                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-                />
-                {errors.self_assessment?.daily_time_minutes && (
-                  <p className="mt-1 text-sm text-red-600">
-                    {errors.self_assessment.daily_time_minutes.message}
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium">
-                  How often do you read or listen to English content?
-                </label>
-                <select
-                  {...register("self_assessment.content_exposure")}
-                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-                >
-                  <option value="none">Never</option>
-                  <option value="low">Sometimes</option>
-                  <option value="medium">Often</option>
-                  <option value="high">Daily</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium">
-                  Pick up to 3 interests (optional)
-                </label>
-                <Controller
-                  name="self_assessment.interests"
-                  control={control}
-                  render={({ field }) => (
-                    <div className="mt-1 flex flex-wrap gap-2">
-                      {[
-                        "tech",
-                        "business",
-                        "movies",
-                        "sports",
-                        "travel",
-                        "music",
-                      ].map((tag) => {
-                        const checked = field.value.includes(tag);
-                        return (
-                          <label
-                            key={tag}
-                            className={`cursor-pointer rounded-full border px-3 py-1 text-sm ${
-                              checked
-                                ? "border-blue-600 bg-blue-50 text-blue-700"
-                                : "border-gray-300 text-gray-700"
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              className="hidden"
-                              checked={checked}
-                              onChange={() => {
-                                if (checked) {
-                                  field.onChange(
-                                    field.value.filter((t) => t !== tag),
-                                  );
-                                } else if (field.value.length < 3) {
-                                  field.onChange([...field.value, tag]);
-                                }
-                              }}
-                            />
-                            {tag}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                />
-              </div>
-            </section>
-          )}
-
-          {/* ─── Step 2: Fill blanks ──────────────────────────── */}
-          {step === 1 && (
-            <section className="space-y-4">
-              <p className="text-gray-600">
-                Fill each blank with one or two words.
-              </p>
-              {FILL_BLANK_QUESTIONS.map((q, i) => (
-                <div key={i}>
-                  <label className="block text-sm">
-                    {i + 1}. {q}
-                  </label>
-                  <input
-                    type="text"
-                    {...register(`fill_blank.answers.${i}` as const)}
-                    className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
-                  />
-                  {errors.fill_blank?.answers?.[i] && (
-                    <p className="mt-1 text-sm text-red-600">
-                      {errors.fill_blank.answers[i]?.message}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </section>
-          )}
-
-          {/* ─── Step 3: Writing ──────────────────────────── */}
-          {step === 2 && (
-            <section className="space-y-4">
-              <p className="text-gray-600">
-                <strong>Prompt:</strong> Describe your typical day in 3–5
-                sentences.
-              </p>
-              <textarea
-                rows={6}
-                {...register("writing.response_text")}
-                className="w-full rounded border border-gray-300 px-3 py-2"
-                placeholder="I usually wake up at..."
-              />
-              {errors.writing?.response_text && (
-                <p className="text-sm text-red-600">
-                  {errors.writing.response_text.message}
-                </p>
-              )}
-            </section>
-          )}
-
-          {/* ─── Step 4: Read aloud (stub) ──────────────────────────── */}
-          {step === 3 && (
-            <section className="space-y-4">
-              <p className="text-gray-600">
-                Read this passage aloud naturally. (Audio recording is coming
-                soon — for now, just check the box once you have read it.)
-              </p>
-              <blockquote className="rounded bg-gray-50 p-4 italic text-gray-800">
-                {READ_ALOUD_PASSAGE}
-              </blockquote>
-              <label className="flex items-start gap-2 text-sm">
-                <Controller
-                  name="read_aloud.acknowledged"
-                  control={control}
-                  render={({ field }) => (
-                    <input
-                      type="checkbox"
-                      checked={!!field.value}
-                      onChange={(e) => field.onChange(e.target.checked)}
-                      className="mt-1"
-                    />
-                  )}
-                />
-                I have read the passage aloud.
-              </label>
-              {errors.read_aloud?.acknowledged && (
-                <p className="text-sm text-red-600">
-                  {errors.read_aloud.acknowledged.message}
-                </p>
-              )}
-
-              {diagnosis.error && (
-                <p className="rounded bg-red-50 p-2 text-sm text-red-700">
-                  {getApiErrorMessage(diagnosis.error)}
-                </p>
-              )}
-            </section>
-          )}
-
-          {/* ─── Nav buttons ──────────────────────────── */}
-          <div className="flex justify-between">
-            <button
-              type="button"
-              onClick={goBack}
-              disabled={step === 0}
-              className="rounded border border-gray-300 px-4 py-2 disabled:opacity-50"
-            >
-              Back
-            </button>
-            {step < STEPS.length - 1 ? (
+            {/* Nav row */}
+            <div className="mt-10 flex items-center justify-between gap-3 border-t border-slate-100 pt-6">
               <button
                 type="button"
-                onClick={goNext}
-                className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+                onClick={goBack}
+                disabled={currentStep === 0 || isPending}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-5 py-2.5 text-[14px] font-semibold text-[#0a1f44] transition-all hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Next
+                <ArrowLeftIcon /> Back
               </button>
-            ) : (
-              <button
-                type="submit"
-                disabled={diagnosis.isPending}
-                className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
-              >
-                {diagnosis.isPending ? "Submitting..." : "Submit diagnosis"}
-              </button>
-            )}
-          </div>
-        </form>
-      </div>
+
+              {isLastStep ? (
+                <button
+                  type="submit"
+                  disabled={isPending}
+                  className="inline-flex items-center gap-2 rounded-full bg-[#0a0f1f] px-6 py-3 text-[14.5px] font-bold text-white shadow-[0_4px_18px_rgba(10,15,31,0.25)] transition-all hover:scale-[1.02] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isPending ? (
+                    <>
+                      <SpinIcon className="text-white" /> Submitting…
+                    </>
+                  ) : (
+                    <>
+                      Submit diagnosis <ArrowRightIcon />
+                    </>
+                  )}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={goNext}
+                  className="inline-flex items-center gap-2 rounded-full bg-[#0a0f1f] px-6 py-3 text-[14.5px] font-bold text-white shadow-[0_4px_18px_rgba(10,15,31,0.25)] transition-all hover:scale-[1.02] active:scale-[0.99]"
+                >
+                  Next <ArrowRightIcon />
+                </button>
+              )}
+            </div>
+          </form>
+        </div>
+
+        <p className="mt-5 text-center text-[12.5px] text-slate-500">
+          Your answers are private and used only to personalize your coaching plan.
+        </p>
+      </section>
+
+      {/* Local keyframes for the cross-step fade */}
+      <style jsx>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </main>
   );
 }
