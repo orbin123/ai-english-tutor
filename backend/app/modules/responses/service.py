@@ -2,6 +2,9 @@
 
 from sqlalchemy.orm import Session
 
+import logging
+
+from app.ai.embeddings import EmbeddingError, EmbeddingService
 from app.ai.agents import EvaluationService
 from app.modules.progress.service import ScoreUpdaterService
 from app.modules.responses.exceptions import (
@@ -20,6 +23,7 @@ from app.modules.skills.models import UserSkillScore
 from app.modules.tasks.models import UserTaskStatus
 from app.modules.tasks.repository import UserTaskRepository
 
+logger = logging.getLogger(__name__)
 
 # Statuses that allow a response to be submitted
 _SUBMITTABLE_STATUSES = {UserTaskStatus.PENDING, UserTaskStatus.IN_PROGRESS}
@@ -37,6 +41,7 @@ class ResponseService:
         self.evaluator = EvaluationService()
         self.feedback_service = FeedbackService(db)
         self.score_updater = ScoreUpdaterService(db)
+        self.embedding_service = EmbeddingService()   
 
     # ---- Step 1: persist response only (private, reused by submit_and_grade) ----
     def _persist_response(
@@ -151,6 +156,58 @@ class ResponseService:
                 "Task content has no activities — cannot evaluate"
             )
         return activities[0]["activity_type"]
+    
+    # ---- Step 5 (side-effect): embed response + store vector ----
+    async def _embed_response(self, *, response: UserResponse) -> None:
+        """Embed raw_text + upsert into Pinecone. Best-effort.
+
+        - If raw_text is missing -> mark as 'skipped', return.
+        - On HF/Pinecone failure -> log + mark 'failed'. Never raises.
+          A future background job will retry rows where status != 'success'.
+        """
+        # Skip non-text submissions (MCQ-only, fill-in-blanks-only, etc.)
+        if not response.raw_text or not response.raw_text.strip():
+            self.response_repo.set_embedding_result(
+                response_id=response.id, status="skipped"
+            )
+            self.db.commit()
+            return
+
+        # Reload user_task to pull user_id + task_id for metadata
+        user_task = self.user_task_repo.get_by_id(response.user_task_id)
+        vector_id = f"response:{response.id}"
+        metadata = {
+            "response_id": response.id,
+            "user_id": user_task.user_id,
+            "user_task_id": response.user_task_id,
+            "task_id": user_task.task_id,
+            "raw_text": response.raw_text[:1000],  # Pinecone metadata size cap
+        }
+
+        try:
+            await self.embedding_service.embed_and_store(
+                vector_id=vector_id,
+                text=response.raw_text,
+                metadata=metadata,
+            )
+        except EmbeddingError as e:
+            # Log + mark failed, but DO NOT raise — user already got feedback
+            logger.warning(
+                "Embedding failed for response %s: %s", response.id, e
+            )
+            self.response_repo.set_embedding_result(
+                response_id=response.id, status="failed"
+            )
+            self.db.commit()
+            return
+
+        # Success path
+        self.response_repo.set_embedding_result(
+            response_id=response.id,
+            status="success",
+            pinecone_vector_id=vector_id,
+        )
+        self.db.commit()
 
     # ---- The whole loop ----
     async def submit_and_grade(
@@ -189,5 +246,8 @@ class ResponseService:
 
         # 4. Update skill scores + log progress (commit 4)
         updated_scores = self.score_updater.apply(evaluation.id)
+
+        # 5. Embed response — best-effort, never blocks the user (commit 5)
+        await self._embed_response(response=response)
 
         return response, evaluation, feedback, updated_scores

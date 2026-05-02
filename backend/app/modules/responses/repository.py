@@ -54,6 +54,26 @@ class ResponseRepository:
         self.db.add(response)
         self.db.flush()
         return response
+    
+    def set_embedding_result(
+        self,
+        *,
+        response_id: int,
+        status: str,
+        pinecone_vector_id: str | None = None,
+    ) -> None:
+        """Update embedding_status (+ optionally vector id) for a response.
+
+        Used by ResponseService after the embed-and-store side-effect
+        completes (or fails). Caller manages the commit.
+        """
+        response = self.db.get(UserResponse, response_id)
+        if response is None:
+            return  # Defensive: row was deleted; nothing to update
+        response.embedding_status = status
+        if pinecone_vector_id is not None:
+            response.pinecone_vector_id = pinecone_vector_id
+        self.db.flush()
 
 
 # Evaluation 

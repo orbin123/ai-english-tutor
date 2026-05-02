@@ -34,6 +34,17 @@ class Settings(BaseSettings):
     LANGCHAIN_PROJECT: str = "ai-english-coach"
     LANGCHAIN_ENDPOINT: str = "https://api.smith.langchain.com"
 
+    # Vector DB (Pinecone)
+    PINECONE_API_KEY: str
+    PINECONE_INDEX_NAME: str = "lingosai-responses"
+    PINECONE_CLOUD: str = "aws"
+    PINECONE_REGION: str = "us-east-1"
+
+    # Embeddings (HuggingFace)
+    HF_API_KEY: str
+    HF_EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
+    EMBEDDING_DIMENSION: int = 384
+
     # Find and read .env file
     model_config = SettingsConfigDict(
         env_file="../.env",

@@ -28,6 +28,14 @@ class UserResponse(Base, IDMixin, CreatedAtMixin):
     content: Mapped[dict] = mapped_column(JSONB, nullable=False)
     raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Embedding state — async side-effect, doesn't block submission
+    embedding_status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="pending", index=True,
+    )
+    pinecone_vector_id: Mapped[str | None] = mapped_column(
+        Text, nullable=True,
+    )
+    
     # Relationships 
     evaluation: Mapped["Evaluation | None"] = relationship(
         back_populates="response",
