@@ -11,24 +11,27 @@ from app.modules.curriculum.exceptions import (
     NoTaskAvailable,
     NotEnrolled,
 )
+from app.modules.curriculum.schemas import EnrollmentRead
 from app.modules.tasks.schemas import UserTaskRead
-from app.modules.tasks.service import TaskService
+from app.modules.tasks.service import DayNotComplete, TaskService
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
 @router.post(
     "/next",
-    response_model=UserTaskRead,
-    status_code=status.HTTP_200_OK,  
+    response_model=list[UserTaskRead],
+    status_code=status.HTTP_200_OK,
 )
-def get_next_task(
+def get_next_tasks(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> UserTaskRead:
-    """Return the authenticated user's current task.
+) -> list[UserTaskRead]:
+    """Return the authenticated user's current day bundle (2–3 tasks).
 
-    Idempotent — calling repeatedly on the same day returns the same task.
+    Idempotent — calling repeatedly on the same day returns the same bundle.
+    New tasks are created only if the bundle is not yet full.
+
     Errors:
       404 — user not enrolled
       409 — enrollment paused/abandoned
@@ -36,7 +39,7 @@ def get_next_task(
     """
     service = TaskService(db)
     try:
-        user_task = service.pick_next(user_id=current_user.id)
+        bundle = service.get_or_create_day_bundle(user_id=current_user.id)
     except NotEnrolled as e:
         raise HTTPException(status_code=404, detail=str(e))
     except EnrollmentNotActive as e:
@@ -44,4 +47,35 @@ def get_next_task(
     except NoTaskAvailable as e:
         raise HTTPException(status_code=503, detail=str(e))
 
-    return UserTaskRead.model_validate(user_task)
+    return [UserTaskRead.model_validate(ut) for ut in bundle]
+
+
+@router.post(
+    "/complete-day",
+    response_model=EnrollmentRead,
+    status_code=status.HTTP_200_OK,
+)
+def complete_day(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> EnrollmentRead:
+    """Mark the current day as complete and advance to the next day.
+
+    Checks that ALL tasks in the day bundle are COMPLETED.
+    Returns the updated enrollment state (current_week, current_day_in_week).
+
+    Errors:
+      404 — user not enrolled
+      409 — enrollment paused/abandoned, or tasks still incomplete
+    """
+    service = TaskService(db)
+    try:
+        enrollment = service.mark_day_complete(user_id=current_user.id)
+    except NotEnrolled as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except EnrollmentNotActive as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except DayNotComplete as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    return EnrollmentRead.model_validate(enrollment)

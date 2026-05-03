@@ -11,7 +11,7 @@ from app.modules.curriculum.exceptions import (
     NoTaskAvailable,
     NotEnrolled,
 )
-from app.modules.curriculum.models import EnrollmentStatus
+from app.modules.curriculum.models import EnrollmentStatus, UserEnrollment
 from app.modules.curriculum.repository import (
     EnrollmentSkillHistoryRepository,
     UserEnrollmentRepository,
@@ -22,8 +22,13 @@ from app.modules.tasks.models import UserTask
 from app.modules.tasks.repository import TaskRepository, UserTaskRepository
 
 
+class DayNotComplete(Exception):
+    """Raised when mark_day_complete is called but not all tasks are done."""
+    pass
+
+
 class TaskService:
-    """Orchestrates 'give me my next task' end-to-end."""
+    """Orchestrates day-bundle creation and day-completion logic."""
 
     def __init__(self, db: Session) -> None:
         self.db = db
@@ -34,19 +39,11 @@ class TaskService:
         self.user_task_repo = UserTaskRepository(db)
         self.engine = RotationEngine()
 
-    def pick_next(self, *, user_id: int) -> UserTask:
-        """Return the user's current task, creating one if needed.
-
-        Idempotent: if a non-completed UserTask already exists for the
-        current enrollment day, returns that. Otherwise creates a new one.
-
-        Raises:
-            NotEnrolled: user has no enrollment.
-            EnrollmentNotActive: enrollment status != ACTIVE.
-            NoTaskAvailable: rotation engine produced a plan but task pool
-                is empty for that (skill, activity) combo.
-        """
-        # 1. Load enrollment
+    # ------------------------------------------------------------------
+    # helpers
+    # ------------------------------------------------------------------
+    def _load_enrollment(self, user_id: int) -> UserEnrollment:
+        """Load and validate the user's active enrollment."""
         enrollment = self.enrollment_repo.get_for_user(user_id)
         if enrollment is None:
             raise NotEnrolled(f"User {user_id} is not enrolled in any course")
@@ -54,21 +51,18 @@ class TaskService:
             raise EnrollmentNotActive(
                 f"Enrollment {enrollment.id} status is {enrollment.status.value}"
             )
+        return enrollment
 
-        # 2. Idempotency check — already have an open task for this day?
-        existing = self.user_task_repo.find_active_for_enrollment_day(
-            enrollment_id=enrollment.id
-        )
-        if existing is not None:
-            return existing
-
-        # 3. Run the rotation engine to decide today's plan
-        skill_name_to_id = self.skill_repo.name_to_id_map()
-        history_rows = self.history_repo.list_for_enrollment(enrollment.id)
-        history_by_skill_id = {
-            h.skill_id: h.last_activity_type for h in history_rows
-        }
-
+    def _create_one_task(
+        self,
+        *,
+        user_id: int,
+        enrollment: UserEnrollment,
+        skill_name_to_id: dict[str, int],
+        history_by_skill_id: dict[int, str | None],
+    ) -> UserTask:
+        """Run the rotation engine once, pick a task from the pool, assign it,
+        and update rotation memory. Does NOT commit."""
         plan = self.engine.decide(
             week_number=enrollment.current_week,
             day_in_week=enrollment.current_day_in_week,
@@ -76,7 +70,6 @@ class TaskService:
             history_by_skill_id=history_by_skill_id,
         )
 
-        # 4. Pick a matching task from the library
         task = self.task_repo.find_for_plan(
             skill_id=plan.skill_id,
             activity_type=plan.activity_type,
@@ -95,24 +88,126 @@ class TaskService:
                 f"difficulty~{plan.target_difficulty}"
             )
 
-        # 5. Create UserTask
         assignment = self.user_task_repo.assign(
             user_id=user_id,
             task_id=task.id,
             enrollment_id=enrollment.id,
         )
 
-        # 6. Update rotation memory so next time we pick a different activity
+        # Update rotation memory so the NEXT call picks a different activity
         self.history_repo.upsert_after_assignment(
             enrollment_id=enrollment.id,
             skill_id=plan.skill_id,
             activity_type=plan.activity_type,
         )
 
-        # 7. Commit and return
-        self.db.commit()
-        self.db.refresh(assignment)
-        # Eager-load task before returning so route can serialize it
-        # without a fresh query
-        self.db.refresh(assignment.task)
         return assignment
+
+    # ------------------------------------------------------------------
+    # public API
+    # ------------------------------------------------------------------
+    def get_or_create_day_bundle(self, *, user_id: int) -> list[UserTask]:
+        """Return the user's current day bundle, creating tasks if needed.
+
+        Idempotent: if the bundle already has enrollment.tasks_per_day
+        non-completed tasks, returns them as-is. Otherwise creates more
+        until the bundle is full.
+
+        Each new task in the bundle is created via the rotation engine,
+        so tasks within the same day may have DIFFERENT activities for
+        the same skill (round-robin advances after each assignment).
+
+        Raises:
+            NotEnrolled: user has no enrollment.
+            EnrollmentNotActive: enrollment status != ACTIVE.
+            NoTaskAvailable: rotation engine produced a plan but task pool
+                is empty for that (skill, activity) combo.
+        """
+        enrollment = self._load_enrollment(user_id)
+
+        # Check how many open tasks already exist for the current day
+        existing = self.user_task_repo.find_active_for_enrollment_day(
+            enrollment_id=enrollment.id,
+        )
+
+        needed = enrollment.tasks_per_day - len(existing)
+        if needed <= 0:
+            return existing
+
+        # Build lookup maps once
+        skill_name_to_id = self.skill_repo.name_to_id_map()
+        history_rows = self.history_repo.list_for_enrollment(enrollment.id)
+        history_by_skill_id = {
+            h.skill_id: h.last_activity_type for h in history_rows
+        }
+
+        new_tasks: list[UserTask] = []
+        for _ in range(needed):
+            assignment = self._create_one_task(
+                user_id=user_id,
+                enrollment=enrollment,
+                skill_name_to_id=skill_name_to_id,
+                history_by_skill_id=history_by_skill_id,
+            )
+            new_tasks.append(assignment)
+
+            # Update the in-memory history map so the next iteration picks
+            # a different activity (the DB row was already updated via
+            # upsert_after_assignment, but the local dict needs refreshing).
+            # We re-read the plan's skill_id from the task to stay generic.
+            plan = self.engine.decide(
+                week_number=enrollment.current_week,
+                day_in_week=enrollment.current_day_in_week,
+                skill_name_to_id=skill_name_to_id,
+                history_by_skill_id=history_by_skill_id,
+            )
+            # Refresh from the DB-flushed history
+            refreshed_rows = self.history_repo.list_for_enrollment(enrollment.id)
+            history_by_skill_id = {
+                h.skill_id: h.last_activity_type for h in refreshed_rows
+            }
+
+        # Commit everything
+        self.db.commit()
+
+        # Refresh all objects so they're serializable
+        bundle = existing + new_tasks
+        for ut in bundle:
+            self.db.refresh(ut)
+            self.db.refresh(ut.task)
+
+        return bundle
+
+    def mark_day_complete(self, *, user_id: int) -> UserEnrollment:
+        """Advance the enrollment day if ALL tasks in the bundle are done.
+
+        Checks that every UserTask for the current enrollment day has
+        status == COMPLETED. If any are still open, raises DayNotComplete.
+
+        Day/week rollover logic:
+          - current_day_in_week increments 1 → 7
+          - when day goes past 7, resets to 1 and current_week increments
+
+        Returns the updated enrollment (for the response).
+
+        Raises:
+            NotEnrolled / EnrollmentNotActive: standard guards.
+            DayNotComplete: at least one task is still pending/in_progress.
+        """
+        enrollment = self._load_enrollment(user_id)
+
+        # Any open tasks left?
+        open_tasks = self.user_task_repo.find_active_for_enrollment_day(
+            enrollment_id=enrollment.id,
+        )
+        if open_tasks:
+            raise DayNotComplete(
+                f"{len(open_tasks)} task(s) still pending for the current day"
+            )
+
+        # Advance day
+        enrollment = self.enrollment_repo.advance_day(enrollment)
+
+        self.db.commit()
+        self.db.refresh(enrollment)
+        return enrollment

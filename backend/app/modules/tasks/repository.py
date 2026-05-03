@@ -177,13 +177,14 @@ class UserTaskRepository:
         self,
         *,
         enrollment_id: int,
-    ) -> UserTask | None:
-        """Return the open (PENDING or IN_PROGRESS) UserTask for this
-        enrollment, if any. Used for idempotency on /tasks/next.
+    ) -> list[UserTask]:
+        """Return ALL open (PENDING or IN_PROGRESS) UserTasks for this
+        enrollment. Used to check the current day's task bundle.
 
         Why this works: enrollment.current_week + current_day_in_week only
-        advance when a task is COMPLETED. So any non-completed UserTask
-        attached to this enrollment IS the current day's task by definition.
+        advance when ALL tasks in the bundle are COMPLETED. So any
+        non-completed UserTasks attached to this enrollment ARE the current
+        day's tasks by definition.
         """
         return (
             self.db.query(UserTask)
@@ -194,7 +195,7 @@ class UserTaskRepository:
                 ),
             )
             .options(joinedload(UserTask.task))
-            .order_by(UserTask.created_at.desc())
-            .first()
+            .order_by(UserTask.created_at.asc())
+            .all()
         )
 

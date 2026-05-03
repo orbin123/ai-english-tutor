@@ -108,6 +108,7 @@ class UserEnrollment(Base, IDMixin, TimestampMixin):
     )
     current_week: Mapped[int] = mapped_column(nullable=False, default=1)
     current_day_in_week: Mapped[int] = mapped_column(nullable=False, default=1)
+    tasks_per_day: Mapped[int] = mapped_column(nullable=False, default=2)
     status: Mapped[EnrollmentStatus] = mapped_column(
         SQLAlchemyEnum(EnrollmentStatus, name="enrollment_status_enum"),
         nullable=False,
