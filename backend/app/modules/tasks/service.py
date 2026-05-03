@@ -1,11 +1,18 @@
 """Business logic for assigning the next task to a user.
 
 Orchestrates: enrollment → rotation engine → task pool → assignment +
-history update.
+history update.  When an LLM-generated template is available the service
+tries TaskGeneratorAgent first, falling back to the seeded pool on failure.
 """
+
+from __future__ import annotations
+
+import asyncio
+import logging
 
 from sqlalchemy.orm import Session
 
+from app.ai.task_generator import TaskGeneratorAgent
 from app.modules.curriculum.exceptions import (
     EnrollmentNotActive,
     NoTaskAvailable,
@@ -17,9 +24,21 @@ from app.modules.curriculum.repository import (
     UserEnrollmentRepository,
 )
 from app.modules.curriculum.rotation import RotationEngine
-from app.modules.skills.repository import SkillRepository
-from app.modules.tasks.models import UserTask
+from app.modules.skills.repository import SkillRepository, UserSkillScoreRepository
+from app.modules.tasks.models import Task, TaskStatus, UserTask
 from app.modules.tasks.repository import TaskRepository, UserTaskRepository
+from app.tasks.schemas import get_templates_for
+from app.tasks.schemas.base import Activity
+
+logger = logging.getLogger(__name__)
+
+# Map DB TaskType → schema Activity so we can look up templates
+_TASK_TYPE_TO_ACTIVITY = {
+    "reading": Activity.READ,
+    "writing": Activity.WRITE,
+    "listening": Activity.LISTEN,
+    "speaking": Activity.SPEAK,
+}
 
 
 class DayNotComplete(Exception):
@@ -35,9 +54,11 @@ class TaskService:
         self.enrollment_repo = UserEnrollmentRepository(db)
         self.history_repo = EnrollmentSkillHistoryRepository(db)
         self.skill_repo = SkillRepository(db)
+        self.score_repo = UserSkillScoreRepository(db)
         self.task_repo = TaskRepository(db)
         self.user_task_repo = UserTaskRepository(db)
         self.engine = RotationEngine()
+        self.generator = TaskGeneratorAgent()
 
     # ------------------------------------------------------------------
     # helpers
@@ -53,6 +74,157 @@ class TaskService:
             )
         return enrollment
 
+    def _build_user_profile(self, user_id: int) -> dict:
+        """Assemble the user_profile dict the TaskGeneratorAgent needs.
+
+        Includes sub_level (derived from weakest skill score) and a
+        comma-separated list of weak_areas.
+        """
+        scores = self.score_repo.get_for_user(user_id)
+        if not scores:
+            # No diagnosis yet — return safe defaults
+            return {
+                "sub_level": 3,
+                "weak_areas": "general grammar, basic vocabulary",
+                "topic": "workplace",
+            }
+
+        # Sort ascending so weakest come first
+        sorted_scores = sorted(scores, key=lambda s: float(s.score))
+        weakest = sorted_scores[:3]  # bottom 3 skills
+        avg_score = sum(float(s.score) for s in scores) / len(scores)
+
+        # Map 0–10 score → 1–10 sub-level
+        sub_level = max(1, min(10, round(avg_score)))
+
+        weak_area_names = []
+        for s in weakest:
+            if s.skill and s.skill.name:
+                weak_area_names.append(s.skill.name)
+        weak_areas = ", ".join(weak_area_names) if weak_area_names else "general grammar"
+
+        return {
+            "sub_level": sub_level,
+            "weak_areas": weak_areas,
+            "topic": "workplace",  # hardcoded for MVP
+        }
+
+    def _try_generate_task(
+        self,
+        *,
+        user_id: int,
+        plan: "RotationEngine.Plan",  # noqa: F821
+        enrollment: UserEnrollment,
+        user_profile: dict,
+        skill_name_to_id: dict[str, int],
+    ) -> UserTask | None:
+        """Attempt to generate a task via the LLM.
+
+        Returns a UserTask if generation succeeds, None on any failure
+        (so the caller can fall back to the seeded pool).
+        """
+        from app.tasks.schemas.base import SubSkill
+
+        # Map the plan's skill name to a SubSkill enum
+        # The schema SubSkill uses the DB skill name directly for grammar/vocabulary/tone;
+        # for others we need a mapping.
+        _SKILL_NAME_TO_SUBSKILL = {
+            "grammar": SubSkill.GRAMMAR,
+            "vocabulary": SubSkill.VOCABULARY,
+            "pronunciation": SubSkill.PRONUNCIATION,
+            "fluency": SubSkill.FLUENCY,
+            "expression": SubSkill.THOUGHT_ORGANIZATION,
+            "comprehension": SubSkill.LISTENING,
+            "tone": SubSkill.TONE,
+        }
+
+        sub_skill = _SKILL_NAME_TO_SUBSKILL.get(plan.skill_name)
+        if sub_skill is None:
+            logger.warning("No SubSkill mapping for %r, skipping LLM gen", plan.skill_name)
+            return None
+
+        # Map plan.activity_type (TaskType) → schema Activity
+        schema_activity = _TASK_TYPE_TO_ACTIVITY.get(plan.activity_type.value)
+        if schema_activity is None:
+            logger.warning("No Activity mapping for %r, skipping LLM gen", plan.activity_type)
+            return None
+
+        # Find matching templates
+        templates = get_templates_for(sub_skill, schema_activity)
+        if not templates:
+            logger.info(
+                "No templates for sub_skill=%s activity=%s, skipping LLM gen",
+                sub_skill.value, schema_activity.value,
+            )
+            return None
+
+        # Pick the first template that supports the user's sub_level
+        sub_level = user_profile.get("sub_level", 5)
+        template = None
+        for tpl in templates:
+            lo, hi = tpl.difficulty_range
+            if lo <= sub_level <= hi:
+                template = tpl
+                break
+        if template is None:
+            template = templates[0]  # fallback to first template
+
+        try:
+            # Run the async generator in a sync context
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # We're inside an async framework (FastAPI) — use a new thread
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    content = pool.submit(
+                        asyncio.run,
+                        self.generator.generate(template, user_profile),
+                    ).result(timeout=30)
+            else:
+                content = asyncio.run(
+                    self.generator.generate(template, user_profile)
+                )
+        except Exception as exc:
+            logger.warning(
+                "LLM generation failed for template=%s: %s",
+                template.template_id, exc,
+            )
+            return None
+
+        # Create a new Task row with the generated content
+        task = Task(
+            title=f"{plan.skill_name.title()} – {template.task_type} (generated)",
+            task_type=plan.activity_type,
+            difficulty=sub_level,
+            status=TaskStatus.ACTIVE,
+            content=content,
+        )
+        self.db.add(task)
+        self.db.flush()  # get task.id
+
+        # Wire up the TaskSkill junction
+        from app.modules.tasks.models import TaskSkill
+        ts = TaskSkill(
+            task_id=task.id,
+            skill_id=plan.skill_id,
+            weight=1.0,
+        )
+        self.db.add(ts)
+        self.db.flush()
+
+        # Assign to user
+        assignment = self.user_task_repo.assign(
+            user_id=user_id,
+            task_id=task.id,
+            enrollment_id=enrollment.id,
+        )
+
+        logger.info(
+            "LLM-generated task created: task_id=%s template=%s for user=%s",
+            task.id, template.template_id, user_id,
+        )
+        return assignment
+
     def _create_one_task(
         self,
         *,
@@ -61,8 +233,8 @@ class TaskService:
         skill_name_to_id: dict[str, int],
         history_by_skill_id: dict[int, str | None],
     ) -> UserTask:
-        """Run the rotation engine once, pick a task from the pool, assign it,
-        and update rotation memory. Does NOT commit."""
+        """Run the rotation engine once, try LLM generation first, then
+        fall back to the seeded task pool. Does NOT commit."""
         plan = self.engine.decide(
             week_number=enrollment.current_week,
             day_in_week=enrollment.current_day_in_week,
@@ -70,15 +242,33 @@ class TaskService:
             history_by_skill_id=history_by_skill_id,
         )
 
+        # --- Try LLM generation first ---
+        user_profile = self._build_user_profile(user_id)
+        assignment = self._try_generate_task(
+            user_id=user_id,
+            plan=plan,
+            enrollment=enrollment,
+            user_profile=user_profile,
+            skill_name_to_id=skill_name_to_id,
+        )
+        if assignment is not None:
+            # Update rotation memory
+            self.history_repo.upsert_after_assignment(
+                enrollment_id=enrollment.id,
+                skill_id=plan.skill_id,
+                activity_type=plan.activity_type,
+            )
+            return assignment
+
+        # --- Fallback: seeded task pool ---
+        logger.info(
+            "Falling back to seeded pool for skill=%s activity=%s",
+            plan.skill_name, plan.activity_type.value,
+        )
         task = self.task_repo.find_for_plan(
             skill_id=plan.skill_id,
             activity_type=plan.activity_type,
             target_difficulty=plan.target_difficulty,
-            # MVP shortcut: do NOT exclude completed tasks. With only one
-            # seeded grammar reading task, excluding completions would
-            # 404 the user on their second visit.
-            # TODO: once we've seeded enough variety per (skill, activity)
-            # cell, set this to user_id so users see fresh content.
             exclude_completed_by_user_id=None,
         )
         if task is None:
