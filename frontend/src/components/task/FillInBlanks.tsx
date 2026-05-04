@@ -23,12 +23,12 @@ export function FillInBlanks({ activity, register, errors }: Props) {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-gray-700">{activity.instruction}</p>
+      <p className="text-sm text-gray-900">{activity.instruction}</p>
 
       {questionEntries.map(([qKey, qText], i) => (
         <div key={qKey}>
           <label className="block text-sm">
-            <span className="font-medium text-gray-700">
+            <span className="font-medium text-gray-900">
               {i + 1}. {qText}
             </span>
           </label>
@@ -39,7 +39,7 @@ export function FillInBlanks({ activity, register, errors }: Props) {
               required: "Please type an answer",
               setValueAs: (v: string) => v.trim(),
             })}
-            className="mt-1 w-full rounded border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+            className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none"
             placeholder="Your answer"
           />
           {errors[qKey] && (

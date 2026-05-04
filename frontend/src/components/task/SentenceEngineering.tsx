@@ -31,7 +31,7 @@ export function SentenceEngineering({
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-gray-700">{activity.instruction}</p>
+      <p className="text-sm text-gray-900">{activity.instruction}</p>
 
       {questionEntries.map(([qKey, q], i) => (
         <SentenceBuilder
@@ -97,7 +97,7 @@ function SentenceBuilder({
 
   return (
     <div className="space-y-2">
-      <p className="text-sm font-medium text-gray-700">
+      <p className="text-sm font-medium text-gray-900">
         {index}. Tap the words in order to build the sentence:
       </p>
 
