@@ -12,16 +12,18 @@ import { useAuthStore } from "@/store/authStore";
  * What it does:
  *  - Waits for the auth store to finish reading from localStorage (_hydrated).
  *  - If the user has no token after hydration → redirects to /login.
- *  - Returns { isReady } so the page knows when it's safe to render.
+ *  - Returns { isReady, isSuperUser } so the page knows when it's safe to render
+ *    and whether the current user has superuser privileges.
  *
  * Usage:
- *   const { isReady } = useRequireAuth();
+ *   const { isReady, isSuperUser } = useRequireAuth();
  *   if (!isReady) return null;   // or a loading spinner
  */
 export function useRequireAuth() {
   const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const hydrated = useAuthStore((s) => s._hydrated);
+  const isSuperUser = useAuthStore((s) => s.isSuperUser);
 
   useEffect(() => {
     // Wait until hydration is done before checking auth.
@@ -34,5 +36,5 @@ export function useRequireAuth() {
   }, [hydrated, isAuthenticated, router]);
 
   // isReady = hydration done AND user is authenticated
-  return { isReady: hydrated && isAuthenticated };
+  return { isReady: hydrated && isAuthenticated, isSuperUser };
 }

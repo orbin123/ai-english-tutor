@@ -29,7 +29,22 @@ type FormValues = Record<string, string>;
 export default function TaskPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { isReady } = useRequireAuth();
+  const { isReady, isSuperUser } = useRequireAuth();
+
+  // ─── Superuser jump override ───────────────────────────────
+  // When the dev panel calls superuser-jump, it stashes the returned
+  // bundle in sessionStorage so we can render it immediately without
+  // an extra /tasks/next call.
+  const [overrideBundle, setOverrideBundle] = useState<UserTask[] | null>(null);
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("superuser_jump_bundle");
+      if (raw) {
+        sessionStorage.removeItem("superuser_jump_bundle");
+        setOverrideBundle(JSON.parse(raw) as UserTask[]);
+      }
+    } catch { /* ignore parse errors */ }
+  }, []);
 
   // Force diagnosis-first: if not done, send them there
   const meQuery = useQuery({
@@ -39,15 +54,16 @@ export default function TaskPage() {
   });
   const me = meQuery.data;
   useEffect(() => {
-    if (me && !me.diagnosis_completed) router.replace("/diagnosis");
-  }, [me, router]);
+    if (me && !me.diagnosis_completed && !isSuperUser) router.replace("/diagnosis");
+  }, [me, isSuperUser, router]);
 
   // ─── Data ──────────────────────────────────────────────────
+  // Skip the normal fetch when we already have a jump override
   const taskQuery = useNextTask(
-    isReady && !!me?.diagnosis_completed && !!me?.enrollment,
+    !overrideBundle && isReady && !!me?.diagnosis_completed && !!me?.enrollment,
   );
 
-  const bundle: UserTask[] = taskQuery.data ?? [];
+  const bundle: UserTask[] = overrideBundle ?? taskQuery.data ?? [];
   const totalTasks = bundle.length;
 
   // ─── Step state ────────────────────────────────────────────

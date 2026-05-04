@@ -20,6 +20,7 @@ class UserOut(BaseModel):
     id: int
     email: EmailStr
     name: str
+    is_superuser: bool = False
     diagnosis_completed: bool = False  # tells frontend where to send the user
     enrollment: EnrollmentRead | None = None
 

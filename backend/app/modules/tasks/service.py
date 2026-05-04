@@ -344,14 +344,6 @@ class TaskService:
             # Update the in-memory history map so the next iteration picks
             # a different activity (the DB row was already updated via
             # upsert_after_assignment, but the local dict needs refreshing).
-            # We re-read the plan's skill_id from the task to stay generic.
-            plan = self.engine.decide(
-                week_number=enrollment.current_week,
-                day_in_week=enrollment.current_day_in_week,
-                skill_name_to_id=skill_name_to_id,
-                history_by_skill_id=history_by_skill_id,
-            )
-            # Refresh from the DB-flushed history
             refreshed_rows = self.history_repo.list_for_enrollment(enrollment.id)
             history_by_skill_id = {
                 h.skill_id: h.last_activity_type for h in refreshed_rows
@@ -367,6 +359,70 @@ class TaskService:
             self.db.refresh(ut.task)
 
         return bundle
+
+    def superuser_jump(
+        self,
+        *,
+        user_id: int,
+        week: int,
+        day_in_week: int,
+    ) -> list[UserTask]:
+        """Create a fresh task bundle for an arbitrary (week, day).
+
+        Used only by the superuser dev panel for UI testing.
+        Bypasses the enrollment's current_week/current_day_in_week.
+        Always creates new tasks — does NOT reuse existing ones.
+        Does NOT advance or modify the user's enrollment state.
+        Does NOT update rotation history.
+        Commits and returns the created UserTask objects.
+        """
+        enrollment = self._load_enrollment(user_id)
+
+        skill_name_to_id = self.skill_repo.name_to_id_map()
+
+        # Start from the first allowed activity every time so the jump
+        # is deterministic for UI testing regardless of prior usage.
+        history_by_skill_id: dict[int, None] = {}
+
+        user_profile = self._build_user_profile(user_id)
+
+        plan = self.engine.decide(
+            week_number=week,
+            day_in_week=day_in_week,
+            skill_name_to_id=skill_name_to_id,
+            history_by_skill_id=history_by_skill_id,
+        )
+
+        assignment = self._try_generate_task(
+            user_id=user_id,
+            plan=plan,
+            enrollment=enrollment,
+            user_profile=user_profile,
+            skill_name_to_id=skill_name_to_id,
+        )
+
+        if assignment is None:
+            task = self.task_repo.find_for_plan(
+                skill_id=plan.skill_id,
+                activity_type=plan.activity_type,
+                target_difficulty=plan.target_difficulty,
+                exclude_completed_by_user_id=None,
+            )
+            if task is None:
+                raise NoTaskAvailable(
+                    f"No task in pool for skill={plan.skill_name}, "
+                    f"activity={plan.activity_type.value}"
+                )
+            assignment = self.user_task_repo.assign(
+                user_id=user_id,
+                task_id=task.id,
+                enrollment_id=enrollment.id,
+            )
+
+        self.db.commit()
+        self.db.refresh(assignment)
+        self.db.refresh(assignment.task)
+        return [assignment]
 
     def mark_day_complete(self, *, user_id: int) -> UserEnrollment:
         """Advance the enrollment day if ALL tasks in the bundle are done.

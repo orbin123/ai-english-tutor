@@ -278,4 +278,13 @@ export const tasksApi = {
   // Mark the entire day as complete after all tasks in the bundle are submitted
   completeDay: () =>
     api.post("/tasks/complete-day").then((r) => r.data),
+
+  // Superuser-only: jump to a specific week/day to generate tasks for it
+  superuserJump: (week: number, dayInWeek: number) =>
+    api
+      .post<UserTask[]>("/tasks/superuser-jump", {
+        week,
+        day_in_week: dayInWeek,
+      })
+      .then((r) => r.data),
 };

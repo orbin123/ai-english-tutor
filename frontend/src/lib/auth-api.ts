@@ -8,6 +8,7 @@ export interface UserOut {
   email: string;
   name: string;
   diagnosis_completed: boolean;
+  is_superuser: boolean;
   enrollment: EnrollmentRead | null;
 }
 
