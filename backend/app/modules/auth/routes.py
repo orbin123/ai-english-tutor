@@ -59,7 +59,10 @@ def login(payload: UserLogin, db: Session = Depends(get_db)) -> TokenOut:
             detail="Invalid email or password"
         )
 
-    token = create_access_token(data={"sub": str(user.id)})
+    token = create_access_token(data={
+        "sub": str(user.id),
+        "is_superuser": user.is_superuser,
+    })
     return TokenOut(access_token=token)
 
 @router.get("/me", response_model=UserOut)
@@ -74,6 +77,7 @@ def me(
         id=current_user.id,
         email=current_user.email,
         name=current_user.name,
+        is_superuser=current_user.is_superuser,
         diagnosis_completed=bool(profile and profile.diagnosis_completed),
         enrollment=(
             EnrollmentRead.model_validate(enrollment)
@@ -171,7 +175,10 @@ def google_callback(
     )
 
     # --- Issue our own JWT ---
-    jwt_token = create_access_token(data={"sub": str(user.id)})
+    jwt_token = create_access_token(data={
+        "sub": str(user.id),
+        "is_superuser": user.is_superuser,
+    })
 
     # --- Redirect frontend with token ---
     # We pass the token as a query param. The frontend reads it and stores it.

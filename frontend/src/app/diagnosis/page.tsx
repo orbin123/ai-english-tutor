@@ -607,7 +607,7 @@ function StepReadAloud({ form }: { form: ReturnType<typeof useForm<DiagnosisForm
 /* ── Page ─────────────────────────────────────────────────────────────── */
 export default function DiagnosisPage() {
   const router = useRouter();
-  const { isReady } = useRequireAuth();
+  const { isReady, isSuperUser } = useRequireAuth();
   const [currentStep, setCurrentStep] = useState(0);
   const [serverError, setServerError] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -618,8 +618,8 @@ export default function DiagnosisPage() {
     enabled: isReady,
   });
   useEffect(() => {
-    if (me?.diagnosis_completed) router.replace("/dashboard");
-  }, [me, router]);
+    if (me?.diagnosis_completed && !isSuperUser) router.replace("/dashboard");
+  }, [me, isSuperUser, router]);
 
   const form = useForm<DiagnosisFormInput, unknown, DiagnosisInput>({
     resolver: zodResolver(diagnosisSchema),
