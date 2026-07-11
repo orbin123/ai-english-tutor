@@ -290,6 +290,18 @@ class Settings(BaseSettings):
     # RAG_PER_ACTIVITY_FEEDBACK can never add tens of seconds to a submit.
     RAG_PER_ACTIVITY_TIMEOUT_S: float = 5.0
 
+    # Feedback generation budget. The default LLM client retries 60s × 3 ≈ 180s,
+    # which blows past the frontend's ceiling and strands the learner under an
+    # empty scorecard. Feedback runs on a DEDICATED client capped at
+    # OPENAI_FEEDBACK_TIMEOUT_S × (OPENAI_FEEDBACK_MAX_RETRIES + 1), and the
+    # service wraps every feedback call in asyncio.wait_for(FEEDBACK_TIMEOUT_S)
+    # so a slow/failed generation falls back to a deterministic card instead of
+    # rolling back the graded attempt. Keep FEEDBACK_TIMEOUT_S comfortably below
+    # the frontend loading ceiling (90s).
+    OPENAI_FEEDBACK_TIMEOUT_S: float = 20.0
+    OPENAI_FEEDBACK_MAX_RETRIES: int = 1
+    FEEDBACK_TIMEOUT_S: float = 25.0
+
     # Find and read .env file
     model_config = SettingsConfigDict(
         env_file="../.env",

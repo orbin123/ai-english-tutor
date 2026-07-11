@@ -5492,6 +5492,26 @@
         "title": "RecentActivity",
         "type": "object"
       },
+      "RegenerateFeedbackResponse": {
+        "description": "Response for POST .../activities/{sequence}/regenerate-feedback.\n\nCarries a freshly generated feedback card (same shape the WS ``feedback_card``\nevent delivers) so the chat UI can swap it in place — the graded score and\ntask are untouched.",
+        "properties": {
+          "feedback": {
+            "additionalProperties": true,
+            "title": "Feedback",
+            "type": "object"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sequence",
+          "feedback"
+        ],
+        "title": "RegenerateFeedbackResponse",
+        "type": "object"
+      },
       "ResendOtpIn": {
         "properties": {
           "email": {
@@ -9682,6 +9702,63 @@
           }
         ],
         "summary": "Start Session",
+        "tags": [
+          "learning_session"
+        ]
+      }
+    },
+    "/api/learning/sessions/{session_id}/activities/{sequence}/regenerate-feedback": {
+      "post": {
+        "description": "Re-generate feedback for one already-graded activity, in place.\n\nReuses the stored evaluation — the score and graded response are untouched —\nand returns a fresh feedback card. Used by the chat \"Regenerate feedback\"\naction when the first generation fell back to a placeholder.\n\nErrors:\n  404 — chat session or attempt not found, or the attempt isn't evaluated yet\n  403 — session belongs to another user",
+        "operationId": "regenerate_feedback_api_learning_sessions__session_id__activities__sequence__regenerate_feedback_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sequence",
+            "required": true,
+            "schema": {
+              "title": "Sequence",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegenerateFeedbackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Regenerate Feedback",
         "tags": [
           "learning_session"
         ]

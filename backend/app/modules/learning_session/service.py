@@ -1299,6 +1299,94 @@ class LearningSessionService:
             message="Activity reset",
         )
 
+    async def regenerate_feedback(
+        self,
+        *,
+        session_id: str,
+        user_id: int,
+        sequence: int,
+    ) -> dict[str, Any]:
+        """Re-run feedback for one already-graded activity and return the card.
+
+        Delegates to the V2 ``SessionService.regenerate_feedback`` (which reuses
+        the stored evaluation — the score and graded response are NOT touched),
+        then projects the refreshed row into the same ``feedback_card`` shape the
+        WebSocket emits so the chat UI can swap it in place. Also refreshes the
+        chat envelope's cached feedback so a reload shows the regenerated card.
+        """
+        session = self._load_session(session_id)
+        if session.user_id != user_id:
+            raise PermissionError(
+                f"User {user_id} cannot regenerate feedback on session {session_id}"
+            )
+        daily = self.db.get(DailySession, session.daily_session_id)
+        if daily is None:
+            raise LookupError(f"DailySession id={session.daily_session_id} not found")
+
+        feedback = await _make_v2_session_service(self.db).regenerate_feedback(
+            session_id=daily.session_id,
+            user_id=user_id,
+            sequence=int(sequence),
+        )
+        attempt = feedback.attempt
+
+        feedback_dict: dict[str, Any] = {
+            "feedback_id": feedback.id,
+            "score": feedback.score,
+            "summary": feedback.summary,
+            "did_well": list(feedback.did_well or []),
+            "mistakes": list(feedback.mistakes or []),
+            "next_tip": feedback.next_tip,
+            "sub_skill_breakdown": dict(feedback.sub_skill_breakdown or {}),
+        }
+        try:
+            feedback_dict.update(
+                project_feedback(
+                    attempt.archetype_id,
+                    activity_id=str(attempt.id),
+                    feedback=FeedbackResult(
+                        score=int(feedback.score),
+                        summary=feedback.summary or "",
+                        did_well=tuple(feedback.did_well or ()),
+                        mistakes=tuple(
+                            MistakeOut(
+                                issue=str(m.get("issue") or ""),
+                                user_wrote=m.get("user_wrote"),
+                                correction=m.get("correction"),
+                                rule=m.get("rule"),
+                                sub_skills_affected=tuple(
+                                    m.get("sub_skills_affected") or ()
+                                ),
+                            )
+                            for m in (feedback.mistakes or [])
+                            if isinstance(m, dict)
+                        ),
+                        next_tip=feedback.next_tip,
+                        sub_skill_breakdown=dict(feedback.sub_skill_breakdown or {}),
+                    ),
+                )
+            )
+        except ContractValidationError as exc:
+            if settings.strict_contracts:
+                raise
+            log.warning(
+                "contract_projection_failed_regenerate_feedback",
+                attempt_id=attempt.id,
+                archetype=attempt.archetype_id,
+                detail=exc.detail,
+                note="returning legacy feedback payload",
+            )
+
+        # Keep the chat envelope's cached feedback in step so a reload/hydrate
+        # renders the regenerated card, but only when this is the activity the
+        # envelope is currently parked on (don't clobber a later activity).
+        if int(session.current_task_index or 0) == max(int(sequence) - 1, 0):
+            session.feedback = feedback_dict
+            self.session_repo.save(session)
+            self.db.commit()
+
+        return feedback_dict
+
     # ------------------------------------------------------------------
     # WebSocket message handling
     # ------------------------------------------------------------------

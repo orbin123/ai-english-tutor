@@ -1,9 +1,11 @@
 """Phase 2 — per-agent model routing in the sessions factory.
 
 Task generation rides its OWN client (``OPENAI_TASKGEN_MODEL``, the cheap
-``gpt-4o-mini`` default) while the evaluator + feedback share the interactive
-default (``OPENAI_CHAT_MODEL``). These tests pin that wiring so a future config
-change can't silently collapse task-gen back onto the interactive client.
+``gpt-4o-mini`` default); feedback rides its OWN client too (same
+``OPENAI_CHAT_MODEL`` as the evaluator but a tight ``OPENAI_FEEDBACK_TIMEOUT_S``
+× ``OPENAI_FEEDBACK_MAX_RETRIES`` budget so a slow generation can't strand the
+learner); the evaluator keeps the shared interactive default. These tests pin
+that wiring so a future config change can't silently collapse them together.
 """
 
 from __future__ import annotations
@@ -22,10 +24,12 @@ def test_taskgen_config_defaults() -> None:
 
 
 def test_task_generator_uses_dedicated_client() -> None:
-    """build_default_agents wires the task generator to the task-gen client and
-    the evaluator/feedback to the shared interactive default."""
+    """build_default_agents wires the task generator and the feedback generator
+    to their own clients, leaving the evaluator on the shared interactive
+    default."""
     factory._shared_default_client.cache_clear()
     factory._shared_taskgen_client.cache_clear()
+    factory._shared_feedback_client.cache_clear()
     try:
         evaluator, feedback, task_gen = factory.build_default_agents()
 
@@ -42,12 +46,20 @@ def test_task_generator_uses_dedicated_client() -> None:
                 gen_inner._reasoning_effort == settings.OPENAI_TASKGEN_REASONING_EFFORT
             )
 
-        # Evaluator + feedback share the fast interactive default client.
-        assert eval_inner is fb_inner
+        # Evaluator: the shared fast interactive default client.
         assert eval_inner.model == settings.OPENAI_CHAT_MODEL
 
-        # The Phase 2 split: task-gen does NOT ride the interactive client.
+        # Feedback: its OWN client — same interactive model, but a deliberately
+        # tight time budget so a slow generation can't strand the learner.
+        assert fb_inner is not eval_inner
+        assert fb_inner.model == settings.OPENAI_CHAT_MODEL
+        assert fb_inner._timeout == settings.OPENAI_FEEDBACK_TIMEOUT_S
+        assert fb_inner._max_retries == settings.OPENAI_FEEDBACK_MAX_RETRIES
+
+        # Neither task-gen nor feedback rides the interactive evaluator client.
         assert gen_inner is not eval_inner
+        assert gen_inner is not fb_inner
     finally:
         factory._shared_default_client.cache_clear()
         factory._shared_taskgen_client.cache_clear()
+        factory._shared_feedback_client.cache_clear()

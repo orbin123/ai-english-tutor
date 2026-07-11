@@ -140,6 +140,27 @@ class FeedbackPhase(NamedTuple):
     feedback: ActivityFeedback
 
 
+def _fallback_feedback(spec: ArchetypeSpec, raw_score: float) -> FeedbackResult:
+    """Deterministic feedback card used when generation times out or fails.
+
+    Carries the (already computed) score so the learner is never stranded under
+    an empty scorecard; the summary invites a regenerate. Mirrors the stub
+    ``LLMFeedbackGenerator`` produces on ``LLMError`` so both paths look alike.
+    """
+    rounded = int(round(raw_score))
+    return FeedbackResult(
+        score=rounded,
+        summary=(
+            f"Your score is {rounded}/10. Detailed feedback is taking longer "
+            "than usual — you can regenerate it below."
+        ),
+        did_well=(),
+        mistakes=(),
+        next_tip=None,
+        sub_skill_breakdown={skill: rounded for skill in spec.weight_map},
+    )
+
+
 def _validate_agent_input(model_cls, **fields) -> None:
     """Guard a service→agent boundary input.
 
@@ -725,8 +746,8 @@ class SessionService:
                 )
                 learner_history = None
 
-        fb: FeedbackResult = await self.feedback_generator.generate(
-            archetype=spec,
+        fb: FeedbackResult = await self._generate_feedback_bounded(
+            spec=spec,
             evaluation=eval_result,
             user_response=user_response,
             task_content=attempt.task_content,
@@ -804,6 +825,117 @@ class SessionService:
             )
 
         yield FeedbackPhase(feedback)
+
+    async def _generate_feedback_bounded(
+        self,
+        *,
+        spec: ArchetypeSpec,
+        evaluation: EvaluationResult,
+        user_response: dict | None,
+        task_content: dict | None,
+        feedback_overrides: dict | None,
+        learner_history: str | None,
+    ) -> FeedbackResult:
+        """Generate feedback under a hard wall-clock cap.
+
+        The learner has already seen their score; feedback must never block the
+        turn past the frontend's ceiling nor cost them the graded attempt. We cap
+        the generation at ``FEEDBACK_TIMEOUT_S`` and, on timeout OR any failure,
+        return a deterministic fallback card built from the (already computed)
+        score. Callers therefore always get a non-empty ``FeedbackResult`` and can
+        commit the attempt — a slow model degrades to a fallback, not a rollback.
+        """
+        try:
+            return await asyncio.wait_for(
+                self.feedback_generator.generate(
+                    archetype=spec,
+                    evaluation=evaluation,
+                    user_response=user_response,
+                    task_content=task_content,
+                    feedback_overrides=feedback_overrides,
+                    learner_history=learner_history,
+                ),
+                timeout=settings.FEEDBACK_TIMEOUT_S,
+            )
+        except Exception:
+            # Timeout, cancellation, LLM error, or an unexpected failure — the
+            # score is safe; downgrade to a deterministic card so the attempt
+            # still commits and the learner can regenerate.
+            log.warning(
+                "feedback_generation_fallback",
+                archetype=spec.archetype_id,
+                exc_info=True,
+            )
+            return _fallback_feedback(spec, evaluation.raw_score)
+
+    async def regenerate_feedback(
+        self,
+        *,
+        session_id: str,
+        user_id: int,
+        sequence: int,
+    ) -> ActivityFeedback:
+        """Re-run feedback for an already-evaluated attempt, in place.
+
+        Reuses the stored :class:`ActivityEvaluation` (the score/rubric are NOT
+        recomputed and the graded response/task are untouched) and overwrites the
+        attempt's :class:`ActivityFeedback` with a freshly generated card. Bounded
+        by the same cap as the submit path, so a persistent outage still yields a
+        fallback card rather than an error. Used by the "Regenerate feedback"
+        action when the first generation timed out to a fallback.
+        """
+        session = self._load_owned(session_id=session_id, user_id=user_id)
+        attempt = self.attempts_repo.get(session_pk=session.id, sequence=sequence)
+        if attempt is None:
+            raise AttemptNotFound(
+                f"session {session_id!r}: no attempt at sequence {sequence}"
+            )
+        if attempt.status is not AttemptStatus.EVALUATED or attempt.evaluation is None:
+            raise AttemptNotFound(
+                f"session {session_id!r} seq {sequence}: not evaluated yet"
+            )
+
+        spec = get_archetype(attempt.archetype_id)
+        stored = attempt.evaluation
+        eval_result = EvaluationResult(
+            raw_score=float(stored.raw_score),
+            rubric_scores=dict(stored.rubric_scores or {}),
+            evaluator_notes=stored.evaluator_notes,
+        )
+        file_overrides = self._file_overrides_for_day(session.day_id)
+        fb = await self._generate_feedback_bounded(
+            spec=spec,
+            evaluation=eval_result,
+            user_response=attempt.user_response,
+            task_content=attempt.task_content,
+            feedback_overrides=file_overrides.get("feedback") or None,
+            learner_history=None,
+        )
+
+        mistakes_payload = [
+            {
+                "issue": m.issue,
+                "user_wrote": m.user_wrote,
+                "correction": m.correction,
+                "rule": m.rule,
+                "sub_skills_affected": list(m.sub_skills_affected),
+            }
+            for m in fb.mistakes
+        ]
+        feedback = attempt.feedback
+        if feedback is None:
+            feedback = ActivityFeedback(attempt_id=attempt.id)
+            self.feedback_repo.add(feedback)
+        feedback.score = fb.score
+        feedback.summary = fb.summary
+        feedback.did_well = list(fb.did_well)
+        feedback.mistakes = mistakes_payload
+        feedback.next_tip = fb.next_tip
+        feedback.sub_skill_breakdown = dict(fb.sub_skill_breakdown)
+
+        self.db.commit()
+        self.db.refresh(feedback)
+        return feedback
 
     # ── complete ───────────────────────────────────────────────────
 

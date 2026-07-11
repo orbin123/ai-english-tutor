@@ -211,7 +211,7 @@ type ChatEvent =
   | { kind: "scorecard"; payload: ScorecardPayload }
   | { kind: "final_scorecard"; payload: FinalScorecardPayload }
   | { kind: "rag_feedback"; payload: RagFeedbackPayload }
-  | { kind: "feedback"; payload: FeedbackPayload }
+  | { kind: "feedback"; payload: FeedbackPayload; sequence?: number }
   | { kind: "pronunciation"; payload: PronunciationResultPayload };
 
 type WSIncoming =
@@ -418,7 +418,11 @@ function hydrateResultEventsFromState(state: LearningSessionState): ChatEvent[] 
     { kind: "section", tone: "score", label: "Activity score" },
     { kind: "scorecard", payload: scorecardPayload },
     { kind: "section", tone: "feedback", label: "Activity feedback" },
-    { kind: "feedback", payload: feedbackPayload },
+    {
+      kind: "feedback",
+      payload: feedbackPayload,
+      sequence: typeof sequence === "number" ? sequence : undefined,
+    },
   ];
 }
 
@@ -1403,6 +1407,12 @@ export default function ChatSessionPage() {
   const [restarting, setRestarting] = useState(false);
   const [restartDialogOpen, setRestartDialogOpen] = useState(false);
   const [retryingSequence, setRetryingSequence] = useState<number | null>(null);
+  // The activity sequence whose feedback is currently being regenerated (drives
+  // the "Regenerate feedback" button's loading state). Unlike a retry, this does
+  // NOT reconnect or reset the graded attempt — it swaps the card in place.
+  const [regeneratingSequence, setRegeneratingSequence] = useState<number | null>(
+    null,
+  );
   // True while a forced task regeneration (retry-on-failed-generation) is in flight.
   const [regenerating, setRegenerating] = useState(false);
   const [currentSequence, setCurrentSequence] = useState<number | null>(null);
@@ -2012,10 +2022,11 @@ export default function ChatSessionPage() {
             : null,
         );
         const payload = msg.payload as unknown as FeedbackPayload;
+        const feedbackSequence = currentSequenceRef.current ?? undefined;
         setEvents((prev) => [
           ...prev,
           { kind: "section", tone: "feedback", label: "Activity feedback" },
-          { kind: "feedback", payload },
+          { kind: "feedback", payload, sequence: feedbackSequence },
         ]);
         return;
       }
@@ -2393,6 +2404,36 @@ export default function ChatSessionPage() {
     }
   }
 
+  async function handleRegenerateFeedback(sequence: number) {
+    // Re-run ONLY the feedback for one graded activity and swap the card in
+    // place. No WS reconnect, no transcript wipe — the score stays put. This is
+    // the escape hatch when the first feedback fell back to a placeholder.
+    if (!sessionId || regeneratingSequence !== null) return;
+    setRegeneratingSequence(sequence);
+    try {
+      const res = await learningSessionApi.regenerateFeedback(sessionId, sequence);
+      const nextPayload = res.feedback as unknown as FeedbackPayload;
+      setEvents((prev) =>
+        prev.map((e) =>
+          e.kind === "feedback" && e.sequence === sequence
+            ? // The score is unchanged, so keep the original pass-mark gate so a
+              // gated learner's banner survives the swap.
+              { ...e, payload: { ...nextPayload, gate: e.payload.gate ?? nextPayload.gate } }
+            : e,
+        ),
+      );
+    } catch (err: unknown) {
+      const detail =
+        (err as { response?: { data?: { detail?: string } }; message?: string })
+          ?.response?.data?.detail ||
+        (err as { message?: string })?.message ||
+        "Could not regenerate feedback.";
+      setEvents((prev) => [...prev, { kind: "chat", role: "ai", content: `⚠️ ${detail}` }]);
+    } finally {
+      setRegeneratingSequence(null);
+    }
+  }
+
   const setTaskAnswers = useCallback((eventIdx: number, next: Record<string, unknown>) => {
     setEvents((prev) =>
       prev.map((e, i) =>
@@ -2720,6 +2761,31 @@ export default function ChatSessionPage() {
                     feedback={evt.payload}
                     taskPayload={lastTask?.kind === "task" ? lastTask.payload : null}
                   />
+                  {typeof evt.sequence === "number" && (
+                    <div style={{ marginTop: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => handleRegenerateFeedback(evt.sequence!)}
+                        disabled={regeneratingSequence !== null}
+                        style={{
+                          border: "none",
+                          background: "none",
+                          padding: "2px 0",
+                          fontSize: 12.5,
+                          fontWeight: 600,
+                          color: "oklch(55% 0.02 240)",
+                          cursor:
+                            regeneratingSequence !== null ? "default" : "pointer",
+                          opacity: regeneratingSequence !== null ? 0.6 : 1,
+                          textDecoration: "underline",
+                        }}
+                      >
+                        {regeneratingSequence === evt.sequence
+                          ? "Regenerating…"
+                          : "Regenerate feedback"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             }

@@ -78,6 +78,18 @@ class StartSessionResponse(BaseModel):
     message: str = "Session ready"
 
 
+class RegenerateFeedbackResponse(BaseModel):
+    """Response for POST .../activities/{sequence}/regenerate-feedback.
+
+    Carries a freshly generated feedback card (same shape the WS ``feedback_card``
+    event delivers) so the chat UI can swap it in place — the graded score and
+    task are untouched.
+    """
+
+    sequence: int
+    feedback: dict[str, Any]
+
+
 # --- WebSocket --------------------------------------------------------
 
 
