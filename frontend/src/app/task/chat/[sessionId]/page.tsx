@@ -205,7 +205,7 @@ interface PronunciationResultPayload {
 
 /* ── Event log ───────────────────────────────────────────────────────── */
 type ChatEvent =
-  | { kind: "chat"; role: "ai" | "you"; content: string; actions?: string[]; streamId?: string; streaming?: boolean; retryTaskGen?: boolean }
+  | { kind: "chat"; role: "ai" | "you"; content: string; actions?: string[]; streamId?: string; streaming?: boolean; retryTaskGen?: boolean; format?: "markdown" | "plain" }
   | { kind: "section"; tone: "intro" | "task" | "score" | "feedback"; label: string }
   | { kind: "task"; payload: AnyTaskPayload; submitted: boolean; answers: Record<string, unknown> }
   | { kind: "scorecard"; payload: ScorecardPayload }
@@ -1419,6 +1419,10 @@ export default function ChatSessionPage() {
   // Mirrors `currentSequence` so the stable (`[]`-dep) WS handler can detect
   // when the *just-graded* activity is the last one (→ "completing" skeleton).
   const currentSequenceRef = useRef<number | null>(null);
+  // Mirrors `phase` so the stable (`[]`-dep) WS handler can stamp each AI chat
+  // bubble's markdown format at creation time — not at render time, which
+  // would rebind every past bubble to whatever `phase` currently is.
+  const phaseRef = useRef(phase);
   // Set when a restart/retry intentionally wipes the transcript so the next
   // WebSocket open clears non-chat events instead of preserving them.
   const fullResetRef = useRef(false);
@@ -1433,6 +1437,10 @@ export default function ChatSessionPage() {
   useEffect(() => {
     eventsRef.current = events;
   }, [events]);
+
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
 
   useEffect(() => {
     currentSequenceRef.current = currentSequence;
@@ -1771,6 +1779,12 @@ export default function ChatSessionPage() {
           role,
           content: msg.content || "",
           actions: msg.actions,
+          format:
+            role === "ai" &&
+            phaseRef.current === "teaching" &&
+            !isNavigationPromptActions(msg.actions)
+              ? ("markdown" as const)
+              : undefined,
         },
       ]);
       return;
@@ -1837,7 +1851,16 @@ export default function ChatSessionPage() {
         if (msg.content) {
           setEvents((prev) => [
             ...prev,
-            { kind: "chat", role: "ai", content: msg.content || "", actions: msg.actions },
+            {
+              kind: "chat",
+              role: "ai",
+              content: msg.content || "",
+              actions: msg.actions,
+              format:
+                phaseRef.current === "teaching" && !isNavigationPromptActions(msg.actions)
+                  ? ("markdown" as const)
+                  : undefined,
+            },
           ]);
         }
         return;
@@ -1852,6 +1875,12 @@ export default function ChatSessionPage() {
             content: msg.content ?? evt.content,
             actions: msg.actions,
             streaming: false,
+            format:
+              evt.role === "ai" &&
+              phaseRef.current === "teaching" &&
+              !isNavigationPromptActions(msg.actions)
+                ? ("markdown" as const)
+                : undefined,
           };
         });
         if (found) return next;
@@ -1865,6 +1894,10 @@ export default function ChatSessionPage() {
             actions: msg.actions,
             streamId,
             streaming: false,
+            format:
+              phaseRef.current === "teaching" && !isNavigationPromptActions(msg.actions)
+                ? ("markdown" as const)
+                : undefined,
           },
         ];
       });
@@ -2533,10 +2566,10 @@ export default function ChatSessionPage() {
               const isLatestNavigationPrompt =
                 isNavigationPrompt && i === navigationPromptChatIndex;
               const useFormatted =
-                phase === "teaching" &&
                 evt.role === "ai" &&
                 !evt.streaming &&
-                !isNavigationPrompt;
+                !isNavigationPrompt &&
+                evt.format === "markdown";
               return (
                 <ChatBubble
                   key={i}
