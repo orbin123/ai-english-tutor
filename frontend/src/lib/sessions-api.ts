@@ -193,6 +193,13 @@ export interface LearningRestartResponse {
   message: string;
 }
 
+export interface RegenerateFeedbackResponse {
+  sequence: number;
+  // Same shape as the WS `feedback_card` payload; the chat page casts it to its
+  // FeedbackPayload before swapping into the rendered card.
+  feedback: Record<string, unknown>;
+}
+
 export interface PronunciationResult {
   overall_score: number;
   accuracy_score: number;
@@ -289,6 +296,15 @@ export const learningSessionApi = {
     api
       .post<LearningRestartResponse>(
         `/api/learning/sessions/${sessionId}/activities/${sequence}/reset`,
+      )
+      .then((r) => r.data),
+
+  // Re-run feedback for one already-graded activity in place. The score and the
+  // graded response are untouched; returns a fresh feedback card to swap in.
+  regenerateFeedback: (sessionId: string, sequence: number) =>
+    api
+      .post<RegenerateFeedbackResponse>(
+        `/api/learning/sessions/${sessionId}/activities/${sequence}/regenerate-feedback`,
       )
       .then((r) => r.data),
 };

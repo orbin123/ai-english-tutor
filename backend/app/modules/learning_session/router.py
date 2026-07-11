@@ -32,6 +32,7 @@ from app.modules.auth.repository import UserRepository
 from app.modules.learning_session.schemas import (
     LearningSessionSnapshotRead,
     LearningSessionStateRead,
+    RegenerateFeedbackResponse,
     StartSessionRequest,
     StartSessionResponse,
     WSIncomingMessage,
@@ -219,6 +220,49 @@ async def reset_activity(
             current_user.id,
         )
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@rest_router.post(
+    "/sessions/{session_id}/activities/{sequence}/regenerate-feedback",
+    response_model=RegenerateFeedbackResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def regenerate_feedback(
+    session_id: str,
+    sequence: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> RegenerateFeedbackResponse:
+    """Re-generate feedback for one already-graded activity, in place.
+
+    Reuses the stored evaluation — the score and graded response are untouched —
+    and returns a fresh feedback card. Used by the chat "Regenerate feedback"
+    action when the first generation fell back to a placeholder.
+
+    Errors:
+      404 — chat session or attempt not found, or the attempt isn't evaluated yet
+      403 — session belongs to another user
+    """
+    service = LearningSessionService(db)
+    try:
+        feedback = await service.regenerate_feedback(
+            session_id=session_id,
+            user_id=current_user.id,
+            sequence=sequence,
+        )
+    except (LookupError, AttemptNotFound, SessionNotFound) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover — unexpected
+        logger.exception(
+            "regenerate_feedback failed session_id=%s sequence=%s user_id=%s",
+            session_id,
+            sequence,
+            current_user.id,
+        )
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return RegenerateFeedbackResponse(sequence=sequence, feedback=feedback)
 
 
 @rest_router.get(

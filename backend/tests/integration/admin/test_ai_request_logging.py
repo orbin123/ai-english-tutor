@@ -214,23 +214,27 @@ def test_build_default_agents_shares_one_inner_client():
     """Repeated factory calls must reuse the process-wide client singletons;
     only the cheap per-agent LoggingLLMClient wrappers are rebuilt.
 
-    Evaluator + feedback share the fast default client; the task generator rides
-    its OWN dedicated client (OPENAI_TASKGEN_MODEL), so it must NOT share the
-    default inner client.
+    The evaluator rides the fast default client; feedback and the task generator
+    each ride their OWN dedicated client (feedback for a tight time budget,
+    task-gen for OPENAI_TASKGEN_MODEL), so neither shares the default inner
+    client.
     """
     from app.ai.sessions import factory
 
     factory._shared_default_client.cache_clear()
     factory._shared_taskgen_client.cache_clear()
+    factory._shared_feedback_client.cache_clear()
     try:
         eval_a, fb_a, gen_a = factory.build_default_agents()
         eval_b, fb_b, gen_b = factory.build_default_agents()
 
         inner_a = eval_a.llm._inner
-        # Evaluator + feedback share the default inner client within a call…
-        assert fb_a.llm._inner is inner_a
-        # …and across calls.
+        # The evaluator reuses the default inner client across calls.
         assert eval_b.llm._inner is inner_a
+        # Feedback uses a SEPARATE (tight-budget) inner client, reused across calls.
+        assert fb_a.llm._inner is not inner_a
+        assert fb_a.llm._inner is fb_b.llm._inner
+        assert fb_a.llm._inner is factory._shared_feedback_client()
         # The task generator uses a SEPARATE (reasoning-model) inner client.
         assert gen_a.llm._inner is not inner_a
         assert gen_a.llm._inner is gen_b.llm._inner
@@ -238,7 +242,9 @@ def test_build_default_agents_shares_one_inner_client():
         # Wrappers stay per-call/per-agent so agent_name attribution holds.
         assert eval_a.llm is not eval_b.llm
         assert eval_a.llm._agent_name == "session.evaluator"
+        assert fb_a.llm._agent_name == "session.feedback"
         assert gen_a.llm._agent_name == "session.task_generator"
     finally:
         factory._shared_default_client.cache_clear()
+        factory._shared_feedback_client.cache_clear()
         factory._shared_taskgen_client.cache_clear()

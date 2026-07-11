@@ -60,6 +60,24 @@ def _shared_taskgen_client() -> OpenAILLMClient:
 
 
 @lru_cache(maxsize=1)
+def _shared_feedback_client() -> OpenAILLMClient:
+    """Dedicated client for the feedback generator with a tight time budget.
+
+    Feedback runs on the same fast ``OPENAI_CHAT_MODEL`` as the evaluator, but it
+    must NOT inherit the shared client's 60s × 3 ≈ 180s retry budget — that blows
+    past the frontend's 90s loading ceiling and strands the learner under an
+    empty scorecard. We cap it at ``OPENAI_FEEDBACK_TIMEOUT_S`` ×
+    (``OPENAI_FEEDBACK_MAX_RETRIES`` + 1) so the worst case is ~40s, and the
+    service further wraps the call in ``asyncio.wait_for(FEEDBACK_TIMEOUT_S)``.
+    """
+    return OpenAILLMClient(
+        timeout=settings.OPENAI_FEEDBACK_TIMEOUT_S,
+        max_retries=settings.OPENAI_FEEDBACK_MAX_RETRIES,
+        usage_sink=record_usage,
+    )
+
+
+@lru_cache(maxsize=1)
 def _shared_judge_client() -> OpenAILLMClient:
     return OpenAILLMClient(
         model=settings.AI_EVAL_JUDGE_MODEL,
@@ -107,12 +125,17 @@ def build_default_agents(
     client = _shared_default_client()
     model = client.model
     taskgen_client = _shared_taskgen_client()
+    feedback_client = _shared_feedback_client()
     return (
         LLMEvaluator(
             LoggingLLMClient(client, agent_name="session.evaluator", model=model)
         ),
         LLMFeedbackGenerator(
-            LoggingLLMClient(client, agent_name="session.feedback", model=model)
+            LoggingLLMClient(
+                feedback_client,
+                agent_name="session.feedback",
+                model=feedback_client.model,
+            )
         ),
         LLMTaskGenerator(
             LoggingLLMClient(
