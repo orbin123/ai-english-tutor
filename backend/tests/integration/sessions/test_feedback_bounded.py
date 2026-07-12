@@ -19,7 +19,7 @@ from app.modules.sessions.feedback_generator import (
     StubFeedbackGenerator,
 )
 from app.modules.sessions.models import AttemptStatus
-from app.modules.sessions.service import SessionService
+from app.modules.sessions.service import FeedbackPhase, SessionService
 from app.scoring import CourseLength
 
 from tests.integration.sessions._lifecycle_support import _user_id
@@ -106,6 +106,48 @@ async def test_feedback_timeout_yields_fallback_and_preserves_score(
 
 
 @pytest.mark.asyncio
+async def test_feedback_phase_flags_fallback_on_timeout(db_session, monkeypatch):
+    """The FeedbackPhase carries fallback=True so the WS layer can offer
+    "Regenerate feedback" only when the card is a degraded placeholder."""
+    monkeypatch.setattr(settings, "FEEDBACK_TIMEOUT_S", 0.05)
+    service, session = await _start(
+        db_session, feedback_generator=_HangingFeedbackGenerator()
+    )
+    gen = service.submit_activity_phased(
+        session_id=session.session_id,
+        user_id=session.user_id,
+        sequence=1,
+        user_response={"a": "b"},
+    )
+    await anext(gen)  # evaluation phase
+    fb_phase = await anext(gen)
+    assert isinstance(fb_phase, FeedbackPhase)
+    assert fb_phase.fallback is True
+    with pytest.raises(StopAsyncIteration):
+        await anext(gen)
+
+
+@pytest.mark.asyncio
+async def test_feedback_phase_not_fallback_on_success(db_session):
+    """A healthy generated card must NOT be flagged as a fallback."""
+    service, session = await _start(
+        db_session, feedback_generator=StubFeedbackGenerator()
+    )
+    gen = service.submit_activity_phased(
+        session_id=session.session_id,
+        user_id=session.user_id,
+        sequence=1,
+        user_response={"a": "b"},
+    )
+    await anext(gen)
+    fb_phase = await anext(gen)
+    assert isinstance(fb_phase, FeedbackPhase)
+    assert fb_phase.fallback is False
+    with pytest.raises(StopAsyncIteration):
+        await anext(gen)
+
+
+@pytest.mark.asyncio
 async def test_feedback_error_yields_fallback(db_session):
     service, session = await _start(
         db_session, feedback_generator=_RaisingFeedbackGenerator()
@@ -137,13 +179,14 @@ async def test_regenerate_feedback_reruns_without_touching_score(db_session):
 
     # Swap in a generator that produces a distinct card, then regenerate.
     service.feedback_generator = _MarkerFeedbackGenerator("SECOND")
-    regenerated = await service.regenerate_feedback(
+    regenerated, is_fallback = await service.regenerate_feedback(
         session_id=session.session_id,
         user_id=session.user_id,
         sequence=1,
     )
 
     assert regenerated.summary == "SECOND"
+    assert is_fallback is False
 
     refreshed = service.get_session(
         session_id=session.session_id, user_id=session.user_id

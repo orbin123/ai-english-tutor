@@ -188,6 +188,7 @@ class LLMFeedbackGenerator:
                 mistakes=(),
                 next_tip=None,
                 sub_skill_breakdown={skill: rounded for skill in archetype.weight_map},
+                fallback=True,
             )
 
         mistakes = output.mistakes

@@ -31,6 +31,11 @@ class FeedbackResult:
     mistakes: tuple[MistakeOut, ...] = ()
     next_tip: str | None = None
     sub_skill_breakdown: dict[str, int] = field(default_factory=dict)
+    # True when this is a degraded placeholder (LLM error / timeout) rather than
+    # real generated feedback. Drives the UI's "Regenerate feedback" affordance,
+    # which is shown ONLY on a fallback card. Not persisted as a DB column — it
+    # rides the WS/JSON feedback payload.
+    fallback: bool = False
 
 
 class FeedbackGenerator(Protocol):
