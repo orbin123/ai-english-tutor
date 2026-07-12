@@ -187,6 +187,9 @@ interface FeedbackPayload {
   user_reaction?: "LIKE" | "DISLIKE" | null;
   // Pass-mark gating: present only when the learner has the gate enabled.
   gate?: { passed: boolean; score_pct: number; threshold_pct: number };
+  // True only when this card is a degraded placeholder (feedback generation
+  // failed/timed out) — gates the "Regenerate feedback" affordance.
+  feedback_fallback?: boolean;
 }
 
 /* ── Pronunciation result payload ─────────────────────────────────────── */
@@ -2761,7 +2764,7 @@ export default function ChatSessionPage() {
                     feedback={evt.payload}
                     taskPayload={lastTask?.kind === "task" ? lastTask.payload : null}
                   />
-                  {typeof evt.sequence === "number" && (
+                  {typeof evt.sequence === "number" && evt.payload.feedback_fallback && (
                     <div style={{ marginTop: 8 }}>
                       <button
                         type="button"

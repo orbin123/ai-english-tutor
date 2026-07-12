@@ -1323,7 +1323,9 @@ class LearningSessionService:
         if daily is None:
             raise LookupError(f"DailySession id={session.daily_session_id} not found")
 
-        feedback = await _make_v2_session_service(self.db).regenerate_feedback(
+        feedback, is_fallback = await _make_v2_session_service(
+            self.db
+        ).regenerate_feedback(
             session_id=daily.session_id,
             user_id=user_id,
             sequence=int(sequence),
@@ -1338,6 +1340,9 @@ class LearningSessionService:
             "mistakes": list(feedback.mistakes or []),
             "next_tip": feedback.next_tip,
             "sub_skill_breakdown": dict(feedback.sub_skill_breakdown or {}),
+            # Stays True if the regenerate itself fell back — keeps the
+            # "Regenerate feedback" affordance available for another try.
+            "feedback_fallback": is_fallback,
         }
         try:
             feedback_dict.update(
@@ -2250,6 +2255,9 @@ class LearningSessionService:
                 "mistakes": list(feedback.mistakes or []),
                 "next_tip": feedback.next_tip,
                 "sub_skill_breakdown": dict(feedback.sub_skill_breakdown or {}),
+                # True only for a degraded placeholder card (LLM error/timeout) —
+                # the UI shows "Regenerate feedback" solely in this case.
+                "feedback_fallback": fb_phase.fallback,
             }
             try:
                 feedback_dict.update(

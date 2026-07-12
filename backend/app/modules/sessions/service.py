@@ -135,9 +135,15 @@ class EvaluationPhase(NamedTuple):
 class FeedbackPhase(NamedTuple):
     """Second phase of a submit: feedback is ready and the transaction is
     committed (eval + feedback + streak in one commit, exactly as the legacy
-    single-shot submit)."""
+    single-shot submit).
+
+    ``fallback`` is True when the feedback is a degraded placeholder (LLM error
+    or timeout) rather than real generated content — the WS layer forwards it so
+    the UI can offer "Regenerate feedback" only on a failed card.
+    """
 
     feedback: ActivityFeedback
+    fallback: bool = False
 
 
 def _fallback_feedback(spec: ArchetypeSpec, raw_score: float) -> FeedbackResult:
@@ -158,6 +164,7 @@ def _fallback_feedback(spec: ArchetypeSpec, raw_score: float) -> FeedbackResult:
         mistakes=(),
         next_tip=None,
         sub_skill_breakdown={skill: rounded for skill in spec.weight_map},
+        fallback=True,
     )
 
 
@@ -824,7 +831,7 @@ class SessionService:
                 },
             )
 
-        yield FeedbackPhase(feedback)
+        yield FeedbackPhase(feedback, fallback=fb.fallback)
 
     async def _generate_feedback_bounded(
         self,
@@ -874,15 +881,17 @@ class SessionService:
         session_id: str,
         user_id: int,
         sequence: int,
-    ) -> ActivityFeedback:
+    ) -> tuple[ActivityFeedback, bool]:
         """Re-run feedback for an already-evaluated attempt, in place.
 
         Reuses the stored :class:`ActivityEvaluation` (the score/rubric are NOT
         recomputed and the graded response/task are untouched) and overwrites the
         attempt's :class:`ActivityFeedback` with a freshly generated card. Bounded
         by the same cap as the submit path, so a persistent outage still yields a
-        fallback card rather than an error. Used by the "Regenerate feedback"
-        action when the first generation timed out to a fallback.
+        fallback card rather than an error. Returns ``(feedback, is_fallback)`` so
+        the caller keeps offering "Regenerate feedback" if it fell back again.
+        Used by the "Regenerate feedback" action when the first generation timed
+        out to a fallback.
         """
         session = self._load_owned(session_id=session_id, user_id=user_id)
         attempt = self.attempts_repo.get(session_pk=session.id, sequence=sequence)
@@ -935,7 +944,7 @@ class SessionService:
 
         self.db.commit()
         self.db.refresh(feedback)
-        return feedback
+        return feedback, fb.fallback
 
     # ── complete ───────────────────────────────────────────────────
 
