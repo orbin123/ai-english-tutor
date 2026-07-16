@@ -519,26 +519,41 @@ WEEKS_A1A2: tuple[WeekSource, ...] = (
                         ),
                     ),
                     ActivityBlueprint(
-                        id="write_error_corr_past",
+                        id="read_error_spot_past",
                         sequence=3,
                         task=TaskBlueprint(
-                            archetype_id="WRITE_ERROR_CORR",
-                            activity="write",
-                            task_widget="error_correction",
-                            topic_override="Correct past tense mistakes",
+                            archetype_id="READ_ERROR_SPOT",
+                            activity="read",
+                            task_widget="error_spotting",
+                            topic_override="Spot past tense errors",
                             generation_instructions=(
-                                "Give the learner 3 sentences that each contain one past tense "
-                                "error — mix wrong irregular forms (e.g. 'eated') and missing "
-                                "-ed errors (e.g. 'She walk to school'). Ask the learner to "
-                                "rewrite each sentence correctly."
+                                "Generate a 3-sentence passage about completed past events. "
+                                "Each sentence must contain exactly one grammatical error, "
+                                "so there are exactly 3 error tokens for the learner to tap. "
+                                "Mix wrong irregular forms (e.g. 'eated') and missing -ed "
+                                "errors (e.g. 'She walk to school'). Do not make all errors "
+                                "the same kind. The learner taps the words that contain a "
+                                "grammar error — do NOT ask them to rewrite the sentences."
+                            ),
+                            widget_requirements=(
+                                "Target widget 'error_spotting'. Return exactly 3 "
+                                "`passage_sentences`. Each sentence must include "
+                                "`sentence_id`, `tokens`, and one `error` object. "
+                                "Each token needs stable `token_id`, `text`, and "
+                                "`is_error`; exactly one token per sentence must have "
+                                "`is_error: true`. Each `error` must include token_id, "
+                                "incorrect_phrase, correction, error_type, rule, and "
+                                "explanation. Set `total_errors` to 3. Allowed "
+                                "error_type values: irregular_past, "
+                                "missing_past_auxiliary, regular_past_ending."
                             ),
                         ),
                         evaluation=EvaluationBlueprint(
-                            evaluator="llm_writing",
-                            evaluation_widget="write_speak_evaluation",
+                            evaluator="rule_plus_llm",
+                            evaluation_widget="read_listen_evaluation",
                         ),
                         feedback=FeedbackBlueprint(
-                            feedback_widget="write_speak_feedback",
+                            feedback_widget="read_listen_feedback",
                         ),
                     ),
                     ActivityBlueprint(

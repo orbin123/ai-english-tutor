@@ -223,6 +223,48 @@ async def reset_activity(
 
 
 @rest_router.post(
+    "/sessions/{session_id}/activities/{sequence}/regenerate",
+    response_model=StartSessionResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def regenerate_activity(
+    session_id: str,
+    sequence: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> StartSessionResponse:
+    """Regenerate a single activity: reset it **and re-roll a brand-new task**.
+
+    Unlike ``/reset`` (which replays the same cached task), this bypasses the
+    cache and generates fresh content, so a bad/mis-generated roll gets another
+    chance. Used by the chat menu's "Restart current activity".
+
+    Errors:
+      404 — chat session or attempt not found
+      403 — session belongs to another user
+    """
+    service = LearningSessionService(db)
+    try:
+        return await service.regenerate_activity(
+            session_id=session_id,
+            user_id=current_user.id,
+            sequence=sequence,
+        )
+    except (LookupError, AttemptNotFound, SessionNotFound) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover — unexpected
+        logger.exception(
+            "regenerate_activity failed session_id=%s sequence=%s user_id=%s",
+            session_id,
+            sequence,
+            current_user.id,
+        )
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@rest_router.post(
     "/sessions/{session_id}/activities/{sequence}/regenerate-feedback",
     response_model=RegenerateFeedbackResponse,
     status_code=status.HTTP_200_OK,

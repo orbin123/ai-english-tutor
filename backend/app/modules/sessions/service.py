@@ -1449,6 +1449,124 @@ class SessionService:
 
         return attempt
 
+    async def regenerate_activity(
+        self,
+        *,
+        session_id: str,
+        user_id: int,
+        sequence: int,
+    ) -> ActivityAttempt:
+        """Reset a single activity **and re-roll a brand-new task**, cache bypassed.
+
+        Unlike ``reset_activity`` (which replays the same cached
+        ``task_content``), this re-arms the lazy-taskgen placeholder from the
+        blueprint recipe and generates fresh content — so a bad/mis-generated
+        roll gets another chance. Powers the chat menu's "Restart current
+        activity"; the feedback-block "Retry" button keeps using
+        ``reset_activity`` (same task).
+
+        Reuses the existing lazy-taskgen machinery end to end: it rebuilds the
+        exact ``__pending_taskgen`` recipe that ``start_session`` would have
+        persisted, writes it back as the placeholder, then calls
+        ``ensure_attempt_content`` to fill it. No new generation code path.
+        """
+        # Full reset first (delete evaluation/feedback, flip to PENDING, reopen
+        # the day + drop the stale scorecard, schedule RAG cleanup, commit).
+        attempt = await self.reset_activity(
+            session_id=session_id,
+            user_id=user_id,
+            sequence=sequence,
+        )
+
+        # Re-arm the placeholder so ``ensure_attempt_content`` re-rolls fresh
+        # content (it only fires when status is PENDING *and* a
+        # ``__pending_taskgen`` recipe is present — ``reset_to_pending`` clears
+        # the response but preserves the *old* generated content, so we must
+        # overwrite it with the placeholder here).
+        session = self._load_owned(session_id=session_id, user_id=user_id)
+        recipe = self._rebuild_taskgen_recipe(session=session, attempt=attempt)
+        attempt.task_content = self._pending_task_content(recipe)
+        self.db.commit()
+        self.db.refresh(attempt)
+
+        return await self.ensure_attempt_content(attempt)
+
+    def _rebuild_taskgen_recipe(
+        self, *, session: DailySession, attempt: ActivityAttempt
+    ) -> dict:
+        """Reconstruct the ``__pending_taskgen`` recipe for one attempt.
+
+        Rebuilds the exact recipe ``start_session`` persisted, so a regenerate
+        produces the same *kind* of task the blueprint intended (only the LLM
+        content differs). The chat layer always starts sessions without an
+        explicit ``sub_level``/``user_interests``, so those fields are fully
+        determined by the day (``sub_level_min``) / are ``None`` — the recipe is
+        deterministic from the blueprint.
+
+        For file-authored days the per-activity ``task_spec`` is recovered by
+        re-running the same archetype filter ``start_session`` used; the allowed
+        core-activity set is derived from the session's own persisted attempts,
+        which reproduces the original filter without re-reading preferences.
+        """
+        sequence = attempt.sequence
+        try:
+            file_day = file_get_day_by_id(session.day_id)
+        except DayNotFound:
+            file_day = None
+
+        if file_day is not None:
+            attempts = self.attempts_repo.list_for_session(session.id)
+            allowed = {
+                get_archetype(a.archetype_id).core_activity for a in attempts
+            }
+            source_plan = [
+                (i, spec, file_task_spec_for(file_day, i))
+                for i, spec in enumerate(file_resolve_archetypes(file_day))
+                if spec.core_activity in allowed
+            ]
+            if not 1 <= sequence <= len(source_plan):
+                raise AttemptNotFound(
+                    f"session {session.session_id!r}: cannot rebuild recipe for "
+                    f"sequence {sequence} (plan has {len(source_plan)} activities)"
+                )
+            _orig_index, spec, task_spec = source_plan[sequence - 1]
+            if spec.archetype_id != attempt.archetype_id:
+                raise AttemptNotFound(
+                    f"session {session.session_id!r}: blueprint archetype "
+                    f"{spec.archetype_id!r} at sequence {sequence} no longer matches "
+                    f"the stored attempt {attempt.archetype_id!r}"
+                )
+            return {
+                "day_topic": file_day.topic,
+                "explanation_brief": file_day.explanation_brief,
+                "archetype_id": spec.archetype_id,
+                "sequence": sequence,
+                "is_mandatory": True,
+                "cefr_level": file_day.cefr_level,
+                "sub_level": file_day.sub_level_min,
+                "user_interests": None,
+                "task_spec": task_spec or None,
+            }
+
+        # DB-authored day: task_spec is always None; day-level fields come from
+        # the curriculum row + its parent week.
+        day = self.days_repo.get_by_day_id(session.day_id)
+        if day is None or day.week is None:
+            raise DayNotFound(
+                f"day_id={session.day_id!r} not found (or has no parent week)"
+            )
+        return {
+            "day_topic": day.topic,
+            "explanation_brief": day.explanation_brief,
+            "archetype_id": attempt.archetype_id,
+            "sequence": sequence,
+            "is_mandatory": attempt.is_mandatory,
+            "cefr_level": day.week.cefr_level,
+            "sub_level": day.week.sub_level_min,
+            "user_interests": None,
+            "task_spec": None,
+        }
+
     async def reset_session_full(
         self,
         *,

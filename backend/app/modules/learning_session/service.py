@@ -1299,6 +1299,59 @@ class LearningSessionService:
             message="Activity reset",
         )
 
+    async def regenerate_activity(
+        self,
+        *,
+        session_id: str,
+        user_id: int,
+        sequence: int,
+    ) -> StartSessionResponse:
+        """Reset one activity **and re-roll a brand-new task**, bypassing the cache.
+
+        Unlike ``reset_activity`` (which replays the same cached task), this
+        delegates to the V2 ``SessionService.regenerate_activity`` — which
+        re-arms the lazy-taskgen placeholder and generates fresh content — then
+        points the chat envelope back at that activity and rebuilds the
+        task_queue from the refreshed attempts. Powers the chat menu's "Restart
+        current activity"; the feedback "Retry" button keeps ``reset_activity``.
+        """
+        session = self._load_session(session_id)
+        if session.user_id != user_id:
+            raise PermissionError(
+                f"User {user_id} cannot regenerate activity on session {session_id}"
+            )
+        daily = self.db.get(DailySession, session.daily_session_id)
+        if daily is None:
+            raise LookupError(f"DailySession id={session.daily_session_id} not found")
+
+        await _make_v2_session_service(self.db).regenerate_activity(
+            session_id=daily.session_id,
+            user_id=user_id,
+            sequence=int(sequence),
+        )
+
+        session.phase = "practice_task"
+        session.current_task_index = max(int(sequence) - 1, 0)
+        session.user_submission = None
+        session.evaluation = None
+        session.feedback = None
+        # Clear the cached task content; resume/state re-read it from the live
+        # attempt (now carrying freshly generated content). Empty dict (not
+        # None) honours the non-nullable column.
+        session.pre_generated_tasks = {}
+        self._sync_task_queue_from_attempts(session)
+        self.session_repo.save(session)
+        self.db.commit()
+
+        return StartSessionResponse(
+            session_id=session.session_id,
+            daily_session_id=session.daily_session_id,
+            topic=session.topic,
+            skill_name=session.skill_name,
+            task_type=session.task_type,
+            message="Activity regenerated",
+        )
+
     async def regenerate_feedback(
         self,
         *,
