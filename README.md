@@ -17,6 +17,11 @@ A strict, intelligent coach that diagnoses your weaknesses, generates personaliz
 
 ---
 
+
+https://github.com/user-attachments/assets/3f9b4cfb-8236-492d-94a4-fc720819f812
+
+
+
 ## 📋 Table of Contents
 
 - [Overview](#-overview)
