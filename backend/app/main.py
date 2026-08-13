@@ -133,14 +133,15 @@ def health_check() -> dict[str, str]:
 
     Use this for the container/orchestrator liveness check: a 200 means "the
     process is alive, don't kill it". For "is this task ready to serve traffic"
-    use /health/ready, which checks DB + Redis.
+    use /health/ready, which checks the database and any configured optional
+    dependencies.
     """
     return {"status": "ok"}
 
 
 @app.get("/health/ready", tags=["system"])
 def readiness_check() -> JSONResponse:
-    """Readiness probe — 200 only when DB **and** Redis are reachable.
+    """Readiness probe for the database and configured optional dependencies.
 
     Wired to the ALB/ECS target-group health check so a task with a broken
     dependency is pulled out of rotation instead of serving 500s. Returns 503
@@ -158,20 +159,28 @@ def readiness_check() -> JSONResponse:
         checks["database"] = "error"
         logging.getLogger("app.health").warning("readiness_db_failed: %s", exc)
 
-    try:
-        import redis
+    if settings.AI_RATE_LIMIT_ENABLED and settings.AI_RATE_LIMIT_BACKEND == "redis":
+        if not settings.redis_url:
+            ready = False
+            checks["redis"] = "not_configured"
+            logging.getLogger("app.health").warning("readiness_redis_not_configured")
+        else:
+            try:
+                import redis
 
-        client = redis.Redis.from_url(
-            settings.redis_url,
-            socket_connect_timeout=0.5,
-            socket_timeout=0.5,
-        )
-        client.ping()
-        checks["redis"] = "ok"
-    except Exception as exc:  # pragma: no cover - exercised manually
-        ready = False
-        checks["redis"] = "error"
-        logging.getLogger("app.health").warning("readiness_redis_failed: %s", exc)
+                client = redis.Redis.from_url(
+                    settings.redis_url,
+                    socket_connect_timeout=0.5,
+                    socket_timeout=0.5,
+                )
+                client.ping()
+                checks["redis"] = "ok"
+            except Exception as exc:  # pragma: no cover - tested with fake client
+                ready = False
+                checks["redis"] = "error"
+                logging.getLogger("app.health").warning(
+                    "readiness_redis_failed: %s", exc
+                )
 
     return JSONResponse(
         status_code=status.HTTP_200_OK

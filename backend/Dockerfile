@@ -105,11 +105,10 @@ EXPOSE 8000
 # restarts, worker supervision, request timeouts). Mirrors
 # backend/scripts/start-prod.sh.
 #
-# WEB_CONCURRENCY defaults to 1. Multi-worker is correctness-safe (the B4
-# double-scoring race is guarded by the session_scorecards unique constraint,
-# not an in-memory set) — but scale by TASK COUNT on Fargate first (smaller
-# tasks, granular ALB health checks); raise workers per task only when one
-# worker per task is the bottleneck.
+# WEB_CONCURRENCY defaults to 1. AI_RATE_LIMIT_BACKEND=memory requires exactly
+# one worker because its usage buckets are process-local. A multi-worker
+# deployment must select the shared Redis backend. Session correctness itself
+# remains guarded by database constraints rather than in-memory state.
 CMD ["sh", "-c", "exec gunicorn app.main:app \
   --worker-class uvicorn.workers.UvicornWorker \
   --workers ${WEB_CONCURRENCY:-1} \

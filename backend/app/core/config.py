@@ -1,5 +1,7 @@
 """Application configuration loaded from environment variables."""
 
+from typing import Literal
+
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -46,8 +48,10 @@ class Settings(BaseSettings):
     DB_MAX_OVERFLOW: int = Field(default=2, ge=0)
     DB_POOL_TIMEOUT: float = Field(default=10.0, gt=0)
 
-    # Redis
-    redis_url: str
+    # Redis is optional in the single-worker zero-cost topology. Select Redis
+    # explicitly for a multi-worker deployment; an empty URL is valid when the
+    # process-local limiter is selected.
+    redis_url: str | None = None
 
     # Auth
     jwt_secret: str
@@ -153,11 +157,15 @@ class Settings(BaseSettings):
     AI_REQUEST_LOGGING_ENABLED: bool = True
 
     # Rate limiting (AI endpoints) — per-user sliding-window limits on every
-    # route that spends money on an AI provider call. Backed by Redis when
-    # reachable (multi-worker safe); falls back to in-memory buckets so dev
-    # and tests need no Redis. Limits are deliberately generous to start —
-    # tighten with data from ai_request_logs per-user counts.
+    # route that spends money on an AI provider call. "memory" is deliberately
+    # process-local and therefore requires exactly one application worker.
+    # Select "redis" for shared buckets in a multi-worker deployment; runtime
+    # Redis failures still degrade to memory so active requests can complete.
     AI_RATE_LIMIT_ENABLED: bool = True
+    # Default Redis preserves the frozen AWS recovery configuration when the
+    # new selector is absent. Local and future Azure examples explicitly choose
+    # memory, making the one-worker tradeoff intentional rather than fallback.
+    AI_RATE_LIMIT_BACKEND: Literal["memory", "redis"] = "redis"
     AI_RATE_LIMIT_PER_MINUTE: int = 30
     AI_RATE_LIMIT_TRANSCRIBE_PER_MINUTE: int = 20
     # Process-local ceiling across provider calls. The zero-cost deployment
