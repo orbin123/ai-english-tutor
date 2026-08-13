@@ -47,7 +47,7 @@ docker compose up -d   # Postgres + Redis (ports come from .env)
 
 ## CI/CD, deployment & DCO
 
-Every change ships the same way: **branch → PR → green required checks → squash-merge to `main` → auto-deploy to production.** Never push to `main` directly — it is branch-protected and a merge is what triggers the deploy. There is no manual prod-deploy step; merging *is* the deploy.
+Every change ships through **branch → PR → green required checks → squash-merge to `main`**. Never push to `main` directly. During the Azure migration freeze, a merge does **not** deploy the backend: the former AWS deployment is manual recovery-only, and Azure deployment has not been implemented. Vercel may still deploy the frontend independently from `main` according to its project configuration.
 
 ### GitHub Actions (`.github/workflows/`)
 PR-triggered jobs run on **every** PR with no `paths` filter — that's deliberate: each is a *required* status check under branch protection, and a path-filtered required check never reports on an unrelated PR and wedges the merge forever. The same jobs are `paths`-filtered on push to `main`.
@@ -59,12 +59,12 @@ PR-triggered jobs run on **every** PR with no `paths` filter — that's delibera
 | `contract.yml` | `openapi-drift` | regenerates `backend/openapi.json` and fails if it drifted — run `uv run python scripts/export_openapi.py` and commit after changing routes |
 | `docker.yml` | `docker-build` | backend image builds + Trivy HIGH/CRITICAL CVE scan (repo-root `.trivyignore` is the justified allowlist) |
 | `backend-curriculum.yml` | `curriculum-seed-smoke` | path-filtered pre-deploy guard: both 24w/48w calendars import + seed/composer/teacher tests |
-| `deploy.yml` | — (CD, no PR run) | the production deploy; see below |
+| `deploy.yml` | — (manual recovery only) | frozen AWS recovery workflow; never runs on push |
 
 Two more required checks come from GitHub Apps, not Actions: **`DCO`** (sign-off, see below) and **`Vercel`** (frontend preview/prod deploy). `migrations` exists because the unit/integration suites use SQLite `create_all` and never exercise the real migration graph — never delete it.
 
-### Auto-deploy (`deploy.yml`)
-On push to `main` it deploys **production** automatically (manual `workflow_dispatch` can target `staging`/`production`). Backend pipeline: OIDC → build & push the backend image to ECR under the immutable `git-<sha>` tag → run `alembic upgrade head` as a one-off ECS task (abort if it fails) → seed the challenge catalog (idempotent A2Z + IELTS upserts) → snapshot the current task-def as the rollback target → ECS Fargate rolling update → wait for stable → smoke `/health/ready` with **auto-rollback** (re-point the service at the previous task-def; migrations are **forward-only and are NOT reverted**) → smoke the frontend `www` (failure surfaces a frontend outage but leaves the healthy backend untouched). The **frontend deploys separately on Vercel** on the same `main` commit. Per-environment config lives in GitHub Environments (`staging` / `production`) as variables sourced from `terraform output`. The deploy contract is documented in `docs/DEPLOY.md`; DR/rollback drill scripts live in `scripts/` (`rollback-drill.sh`, `rds-restore-drill.sh`, `verify-dr-readiness.sh`, `verify-prod-parity.sh`).
+### Frozen AWS recovery deploy (`deploy.yml`)
+The workflow has no `push` trigger, so pushes and merges to `main` cannot invoke AWS deployment. It is retained as readable recovery history and can run only through a deliberately confirmed `workflow_dispatch` targeting the `staging` or `production` GitHub Environment. Its former backend pipeline remains unchanged: OIDC → build and push to ECR under the immutable `git-<sha>` tag → one-off migrations → idempotent challenge seeds → ECS Fargate rolling update → readiness smoke test with service auto-rollback. Migrations remain forward-only and are not reverted. Do not manually dispatch it without the owner's explicit recovery approval. Azure infrastructure and deployment automation are intentionally not part of this migration phase. Vercel remains a separate frontend integration.
 
 ### DCO sign-off — required on every commit
 A required `DCO` check (the probot DCO app) blocks any PR whose commits lack a `Signed-off-by:` trailer whose name/email **match the commit author**. Always commit with sign-off:
@@ -171,5 +171,5 @@ TTS audio and generated images are written to disk by `LocalBlobStorage` (`app/a
 - New task/widget type → update both the backend widget mapping and the corresponding `src/components/chat/` renderer.
 - Scoring math is deterministic and lives only in `app/scoring/` — consume it, don't duplicate it. See `backend/RESTRUCTURE_DECISIONS.md` for the locked constants' rationale.
 - Changed backend routes → regenerate `backend/openapi.json` (`uv run python scripts/export_openapi.py`) and commit it, or the `openapi-drift` check fails.
-- **Ship via PR, never push to `main`.** Merging to `main` auto-deploys to production (`deploy.yml` for backend on ECS, Vercel for frontend). Get the required checks green first, run `ruff format` + `mypy` + the relevant tests locally before pushing, and keep migrations forward-only (a smoke-failure rollback re-points the service but does **not** revert migrations).
+- **Ship via PR, never push to `main`.** Backend deployment is frozen during the Azure transition: `deploy.yml` is manual AWS recovery-only, and no Azure deployment exists yet. Vercel may still deploy the frontend independently. Get the required checks green first, run `ruff format` + `mypy` + the relevant tests locally before pushing, and keep migrations forward-only.
 - **Sign off every commit** (`git commit -s`) so the required `DCO` check passes — the trailer's name/email must match the author. Commits and PRs are authored solely by me (Orbin Sunny); the only trailer is my own `Signed-off-by:` — never add `Co-Authored-By` or any AI/agent attribution.
