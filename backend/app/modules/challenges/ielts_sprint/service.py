@@ -26,6 +26,7 @@ from app.modules.challenges.ielts_sprint.agents.ielts_challenge_speaking_evaluat
 )
 from app.ai.llm import LLMError
 from app.ai.storage import (
+    BlobVisibility,
     IBlobStorage,
     StorageError,
     build_blob_storage,
@@ -672,6 +673,7 @@ class ChallengeReadService:
         self._speaking_audio_storage = build_blob_storage(
             cache_dir=Path(settings.STT_CACHE_DIR) / "speaking_audio",
             public_url_prefix="/internal/challenge-speaking",
+            visibility=BlobVisibility.PRIVATE,
         )
         return self._speaking_audio_storage
 

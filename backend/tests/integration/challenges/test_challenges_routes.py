@@ -10,6 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.ai.storage import BlobVisibility
 from app.core.database import Base, get_db
 from app.modules.auth.dependencies import get_current_user
 from app.modules.auth.models import Role, User, UserRole
@@ -335,9 +336,17 @@ def client(
     class FakeSpeakingAudioStorage:
         store: dict[str, bytes] = {}
 
-        def __init__(self, *, cache_dir, public_url_prefix) -> None:
+        def __init__(
+            self,
+            *,
+            cache_dir,
+            public_url_prefix,
+            visibility: BlobVisibility,
+        ) -> None:
             self.cache_dir = cache_dir
             self.public_url_prefix = public_url_prefix
+            assert visibility is BlobVisibility.PRIVATE
+            self.visibility = visibility
 
         async def put(self, *, key: str, data: bytes, content_type: str) -> dict:
             self.store[key] = data
@@ -353,6 +362,9 @@ def client(
 
         async def exists(self, *, key: str) -> bool:
             return key in self.store
+
+        async def delete(self, *, key: str) -> None:
+            self.store.pop(key, None)
 
         def url_for(self, *, key: str) -> str:
             return f"/internal/{key}"

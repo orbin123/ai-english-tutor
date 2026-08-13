@@ -9,6 +9,7 @@ implementation without touching settings the rest of the suite relies on.
 import pytest
 
 from app.ai.storage import (
+    BlobVisibility,
     LocalBlobStorage,
     S3BlobStorage,
     build_blob_storage,
@@ -43,6 +44,9 @@ class _FakeS3Client:
         if Key not in self.store:
             raise self._not_found()
         return {}
+
+    def delete_object(self, *, Bucket, Key):  # noqa: N803
+        self.store.pop(Key, None)
 
     @staticmethod
     def _not_found():
@@ -181,7 +185,7 @@ class TestFactory:
         storage = build_blob_storage(
             cache_dir=tmp_path,
             public_url_prefix="/responses/audio",
-            private=True,
+            visibility=BlobVisibility.PRIVATE,
         )
         assert isinstance(storage, S3BlobStorage)
         # Private blobs never get a CDN URL.
