@@ -129,3 +129,21 @@ def test_transcribe_audio_stores_successful_upload_behind_auth_route(response_cl
     assert audio_response.status_code == 200
     assert audio_response.content == b"fake webm bytes"
     assert audio_response.headers["content-type"].startswith("audio/webm")
+
+
+def test_learner_audio_route_hides_recording_from_another_learner(response_client):
+    client, _ = response_client
+    response = client.post(
+        "/responses/transcribe-audio",
+        data={"language": "en"},
+        files={"audio": ("clip.webm", b"private bytes", "audio/webm")},
+    )
+    audio_url = response.json()["audio_url"]
+
+    foreign_user = User(id=7, email="other@example.com", name="Other")
+    client.app.dependency_overrides[get_current_user] = lambda: foreign_user
+
+    foreign_response = client.get(audio_url)
+
+    assert foreign_response.status_code == 404
+    assert foreign_response.json() == {"detail": "Audio not found."}

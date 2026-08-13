@@ -12,15 +12,30 @@ ImageGen don't have to know whether they're writing to /tmp or to S3.
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Protocol
 
 from typing_extensions import TypedDict
 
 
+class BlobVisibility(StrEnum):
+    """Access class for a stored object.
+
+    Public objects may be fetched anonymously. Private objects are learner-owned
+    and must be served through an authorization-checked application route.
+    Internal objects are service-only cache/metadata and are never exposed by an
+    application route.
+    """
+
+    PUBLIC = "public"
+    PRIVATE = "private"
+    INTERNAL = "internal"
+
+
 class StoredBlob(TypedDict):
     """A blob that has been persisted and is now servable."""
 
-    public_url: str  # URL the frontend / browser can hit
+    public_url: str  # anonymous URL or protected/internal application path
     storage_key: str  # provider-side key (S3 path, local path, etc.)
     content_type: str  # e.g. "audio/mpeg", "image/png"
     size_bytes: int
@@ -36,6 +51,11 @@ class IBlobStorage(Protocol):
 
     Callers only know: 'put bytes in, get a URL out.'
     """
+
+    @property
+    def visibility(self) -> BlobVisibility:
+        """Return the access class enforced by this storage instance."""
+        ...
 
     async def put(
         self,
@@ -64,6 +84,10 @@ class IBlobStorage(Protocol):
 
         Used to avoid an expensive `get` just to check the cache.
         """
+        ...
+
+    async def delete(self, *, key: str) -> None:
+        """Delete `key` if present. Missing objects are treated as success."""
         ...
 
     def url_for(self, *, key: str) -> str:

@@ -269,6 +269,15 @@ class Settings(BaseSettings):
     # e.g. "https://media.lingosai.com". Private learner audio never uses this.
     MEDIA_CDN_URL: str = ""
 
+    # Azure Blob adapter. Public media is intentionally separated from private
+    # learner/internal data at the account boundary. Runtime authentication uses
+    # DefaultAzureCredential (managed identity in Azure), never account keys.
+    AZURE_BLOB_PUBLIC_ACCOUNT_URL: str = ""
+    AZURE_BLOB_PRIVATE_ACCOUNT_URL: str = ""
+    AZURE_BLOB_PUBLIC_CONTAINER: str = "public-media"
+    AZURE_BLOB_PRIVATE_CONTAINER: str = "learner-media"
+    AZURE_BLOB_INTERNAL_CONTAINER: str = "internal-media"
+
     # Vector DB (Pinecone)
     PINECONE_API_KEY: str
     PINECONE_INDEX_NAME: str = "lingosai-responses"

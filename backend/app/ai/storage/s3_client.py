@@ -34,7 +34,7 @@ from app.ai.storage.exceptions import (
     StorageReadError,
     StorageWriteError,
 )
-from app.ai.storage.interface import StoredBlob
+from app.ai.storage.interface import BlobVisibility, StoredBlob
 
 if TYPE_CHECKING:
     from botocore.client import BaseClient
@@ -59,6 +59,7 @@ class S3BlobStorage:
         region: str | None = None,
         public_url_base: str | None = None,
         internal_url_prefix: str | None = None,
+        visibility: BlobVisibility | None = None,
         client: Any | None = None,
     ) -> None:
         """
@@ -75,27 +76,44 @@ class S3BlobStorage:
                 "/responses/audio". Mutually exclusive with `public_url_base`.
             client: Optional pre-built boto3 S3 client (for tests).
         """
-        if bool(public_url_base) == bool(internal_url_prefix):
+        if visibility is None:
+            if bool(public_url_base) == bool(internal_url_prefix):
+                raise StorageError(
+                    "S3BlobStorage requires exactly one of public_url_base or "
+                    "internal_url_prefix to be set"
+                )
+            visibility = (
+                BlobVisibility.PUBLIC if public_url_base else BlobVisibility.PRIVATE
+            )
+        if visibility is BlobVisibility.PUBLIC:
+            valid_url_mode = bool(public_url_base) and not internal_url_prefix
+        else:
+            valid_url_mode = bool(internal_url_prefix) and not public_url_base
+        if not valid_url_mode:
             raise StorageError(
-                "S3BlobStorage requires exactly one of public_url_base or "
-                "internal_url_prefix to be set"
+                f"S3BlobStorage visibility={visibility.value!r} has an invalid URL mode"
             )
         self._bucket = bucket
         self._key_prefix = key_prefix.strip("/")
         self._region = region
         self._public_url_base = (public_url_base or "").rstrip("/")
         self._internal_url_prefix = (internal_url_prefix or "").rstrip("/")
+        self._visibility = visibility
         self._client = client
         logger.info(
-            "s3_blob_storage_init bucket=%s key_prefix=%s mode=%s",
+            "s3_blob_storage_init bucket=%s key_prefix=%s visibility=%s",
             self._bucket,
             self._key_prefix,
-            "public" if self._public_url_base else "private",
+            self._visibility,
         )
 
     # ------------------------------------------------------------------
     # Public — IBlobStorage contract
     # ------------------------------------------------------------------
+    @property
+    def visibility(self) -> BlobVisibility:
+        return self._visibility
+
     async def put(
         self,
         *,
@@ -148,6 +166,16 @@ class S3BlobStorage:
         except Exception as exc:  # noqa: BLE001 — normalize to StorageReadError
             raise StorageReadError(
                 f"Failed to stat blob key={key!r} object={object_key!r}: {exc}"
+            ) from exc
+
+    async def delete(self, *, key: str) -> None:
+        """Delete one directly addressed object; S3 deletion is idempotent."""
+        object_key = self._object_key(key)
+        try:
+            await asyncio.to_thread(self._sync_delete, object_key)
+        except Exception as exc:  # noqa: BLE001
+            raise StorageWriteError(
+                f"Failed to delete blob key={key!r} object={object_key!r}: {exc}"
             ) from exc
 
     def url_for(self, *, key: str) -> str:
@@ -214,6 +242,9 @@ class S3BlobStorage:
                 return False
             raise
         return True
+
+    def _sync_delete(self, object_key: str) -> None:
+        self._get_client().delete_object(Bucket=self._bucket, Key=object_key)
 
 
 class _S3NotFound(Exception):

@@ -24,7 +24,7 @@ from app.ai.storage.exceptions import (
     StorageReadError,
     StorageWriteError,
 )
-from app.ai.storage.interface import StoredBlob
+from app.ai.storage.interface import BlobVisibility, StoredBlob
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,7 @@ class LocalBlobStorage:
         *,
         root_dir: Path,
         public_url_prefix: str,
+        visibility: BlobVisibility = BlobVisibility.PUBLIC,
     ) -> None:
         """
         Args:
@@ -54,17 +55,23 @@ class LocalBlobStorage:
         self._root = Path(root_dir).resolve()
         # Strip any trailing slash so we can join cleanly later.
         self._url_prefix = public_url_prefix.rstrip("/")
+        self._visibility = visibility
         # Eagerly create the root so first-write doesn't race.
         self._root.mkdir(parents=True, exist_ok=True)
         logger.info(
-            "local_blob_storage_init root=%s url_prefix=%s",
+            "local_blob_storage_init root=%s url_prefix=%s visibility=%s",
             self._root,
             self._url_prefix,
+            self._visibility,
         )
 
     # ------------------------------------------------------------------
     # Public — IBlobStorage contract
     # ------------------------------------------------------------------
+    @property
+    def visibility(self) -> BlobVisibility:
+        return self._visibility
+
     async def put(
         self,
         *,
@@ -119,6 +126,16 @@ class LocalBlobStorage:
         path = self._key_to_path(key)
         # Path.exists() is sync but only does one stat() — fine inline.
         return path.exists()
+
+    async def delete(self, *, key: str) -> None:
+        """Delete one directly addressed file; a missing file is a no-op."""
+        path = self._key_to_path(key)
+        try:
+            await asyncio.to_thread(path.unlink, missing_ok=True)
+        except OSError as exc:
+            raise StorageWriteError(
+                f"Failed to delete blob key={key!r} path={path}: {exc}"
+            ) from exc
 
     def url_for(self, *, key: str) -> str:
         """Return the public URL for `key` without touching the disk."""

@@ -18,7 +18,12 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
-from app.ai.storage import IBlobStorage, StorageError, build_blob_storage
+from app.ai.storage import (
+    BlobVisibility,
+    IBlobStorage,
+    StorageError,
+    build_blob_storage,
+)
 from app.ai.stt import get_default_stt_service
 from app.ai.stt.exceptions import (
     STTError,
@@ -63,7 +68,7 @@ _learner_audio_storage: IBlobStorage | None = None
 def get_learner_audio_storage() -> IBlobStorage:
     """Return the private learner-audio storage client.
 
-    `private=True`: in S3 mode the clip never gets a public CloudFront URL —
+    Private visibility keeps the clip off every anonymous object URL —
     `url_for` returns the owner-checked `/responses/audio/...` route below,
     which streams the bytes back through `storage.get`.
     """
@@ -72,7 +77,7 @@ def get_learner_audio_storage() -> IBlobStorage:
         _learner_audio_storage = build_blob_storage(
             cache_dir=settings.LEARNER_AUDIO_DIR,
             public_url_prefix=_LEARNER_AUDIO_URL_PREFIX,
-            private=True,
+            visibility=BlobVisibility.PRIVATE,
         )
     return _learner_audio_storage
 

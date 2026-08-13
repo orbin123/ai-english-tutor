@@ -28,6 +28,7 @@ import logging
 from typing import cast
 
 from app.ai.storage import (
+    BlobVisibility,
     IBlobStorage,
     StorageError,
     StorageReadError,
@@ -227,6 +228,7 @@ def get_default_stt_service() -> CachedSTTService:
         storage = build_blob_storage(
             cache_dir=settings.STT_CACHE_DIR,
             public_url_prefix="/internal/stt",  # not actually mounted
+            visibility=BlobVisibility.INTERNAL,
         )
         _default_service = CachedSTTService(
             provider=get_default_stt_client(),

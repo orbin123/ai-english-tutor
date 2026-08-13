@@ -23,6 +23,7 @@ from app.ai.pronunciation.azure_client import get_default_pronunciation_client
 from app.ai.pronunciation.exceptions import PronunciationValidationError
 from app.ai.pronunciation.interface import IPronunciationClient, PronunciationResult
 from app.ai.storage import (
+    BlobVisibility,
     IBlobStorage,
     StorageError,
     StorageReadError,
@@ -157,6 +158,7 @@ def get_default_pronunciation_service() -> CachedPronunciationService:
         storage = build_blob_storage(
             cache_dir=settings.PRONUNCIATION_CACHE_DIR,
             public_url_prefix="/internal/pronunciation",
+            visibility=BlobVisibility.INTERNAL,
         )
         _default_service = CachedPronunciationService(
             provider=get_default_pronunciation_client(),
