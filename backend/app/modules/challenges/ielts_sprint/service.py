@@ -33,6 +33,7 @@ from app.ai.storage import (
 )
 from app.ai.stt import STTError, TranscriptionResult, get_default_stt_service
 from app.ai.tts import SynthesisResult, TTSError, get_default_tts_service
+from app.core.audio_uploads import enforce_audio_duration
 from app.modules.challenges.ielts_sprint.evaluation_schemas import (
     FeedbackSections,
     IELTSFeedbackReport,
@@ -930,6 +931,7 @@ class ChallengeReadService:
                     language="en",
                     with_timestamps=False,
                 )
+                enforce_audio_duration(result.get("duration_seconds"))
             except (StorageError, STTError):
                 logger.exception(
                     "challenge_speaking_transcription_failed attempt_id=%s prompt_id=%s",

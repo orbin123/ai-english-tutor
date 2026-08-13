@@ -11,9 +11,10 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.ai.stt import TranscriptionResult, get_default_stt_service
 from app.ai.storage import get_default_blob_storage
 from app.ai.storage.interface import IBlobStorage
+from app.ai.stt import TranscriptionResult, get_default_stt_service
+from app.core.audio_uploads import enforce_audio_duration
 from app.modules.challenges.a2z_game import evaluator
 from app.modules.challenges.a2z_game.constants import (
     A2Z_LETTERS,
@@ -302,6 +303,7 @@ class A2ZService:
             language="en",
             with_timestamps=False,
         )
+        enforce_audio_duration(result.get("duration_seconds"))
         chunk_text = result.get("text", "").strip()
 
         # Store the latest full transcript for reference

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { MAX_AUDIO_RECORDING_SECONDS } from "@/lib/audio-limits";
+
 export type VoiceRecorderState =
   | "idle"
   | "recording"
@@ -9,7 +11,7 @@ export type VoiceRecorderState =
   | "transcribing"
   | "error";
 
-const MAX_DURATION_MS = 60_000;
+const MAX_DURATION_MS = MAX_AUDIO_RECORDING_SECONDS * 1_000;
 const TICK_MS = 200;
 
 const MIME_CANDIDATES = [
@@ -194,7 +196,7 @@ export function useVoiceRecorder(): UseVoiceRecorderReturn {
       if (resolver) {
         resolver(blob);
       } else {
-        // Auto-stop (1-min cap) fired before caller invoked stop().
+        // Auto-stop fired before caller invoked stop().
         // Stash the blob; the Composer reacts to `elapsedMs >= MAX` by calling
         // stop(), which picks up the pending blob synchronously.
         pendingAutoBlobRef.current = blob;

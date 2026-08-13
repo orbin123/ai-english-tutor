@@ -15,10 +15,14 @@ from app.modules.subscriptions.dependencies import require_active_access
 class FakeSTTService:
     def __init__(self) -> None:
         self.calls: list[dict] = []
+        self.duration_seconds = 2.0
 
     async def transcribe(self, **kwargs):
         self.calls.append(kwargs)
-        return {"text": "I usually wake up at seven.", "duration_seconds": 2.0}
+        return {
+            "text": "I usually wake up at seven.",
+            "duration_seconds": self.duration_seconds,
+        }
 
 
 @pytest.fixture()
@@ -76,7 +80,7 @@ def test_transcribe_audio_rejects_oversized_upload_before_stt(
     response_client, monkeypatch
 ):
     client, fake_stt = response_client
-    monkeypatch.setattr(response_routes, "_MAX_AUDIO_UPLOAD_BYTES", 10)
+    monkeypatch.setattr(response_routes.settings, "MAX_AUDIO_UPLOAD_BYTES", 10)
 
     response = client.post(
         "/responses/transcribe-audio",
@@ -86,6 +90,23 @@ def test_transcribe_audio_rejects_oversized_upload_before_stt(
 
     assert response.status_code == 413
     assert fake_stt.calls == []
+
+
+def test_transcribe_audio_rejects_provider_reported_overlong_recording(
+    response_client, monkeypatch
+):
+    client, fake_stt = response_client
+    fake_stt.duration_seconds = 46.0
+    monkeypatch.setattr(response_routes.settings, "MAX_AUDIO_DURATION_SECONDS", 45.0)
+
+    response = client.post(
+        "/responses/transcribe-audio",
+        data={"language": "en"},
+        files={"audio": ("long.webm", b"fake webm bytes", "audio/webm")},
+    )
+
+    assert response.status_code == 413
+    assert len(fake_stt.calls) == 1
 
 
 def test_transcribe_audio_stores_successful_upload_behind_auth_route(response_client):

@@ -26,6 +26,7 @@ from app.ai.stt.exceptions import (
     STTValidationError,
 )
 from app.core.ai_rate_limit import ai_rate_limit
+from app.core.audio_uploads import enforce_audio_duration, read_audio_upload
 from app.modules.subscriptions.dependencies import require_active_access
 from app.core.config import settings
 from app.modules.auth.dependencies import get_current_user, require_learner
@@ -55,7 +56,6 @@ _AUDIO_EXTENSIONS = {
     "audio/x-wav": ".wav",
     "audio/flac": ".flac",
 }
-_MAX_AUDIO_UPLOAD_BYTES = 25 * 1024 * 1024
 _LEARNER_AUDIO_URL_PREFIX = "/responses/audio"
 _learner_audio_storage: IBlobStorage | None = None
 
@@ -137,14 +137,7 @@ async def transcribe_audio(
     feedback after the activity is submitted.
     """
     content_type = _normalized_audio_content_type(audio.content_type)
-    audio_bytes = await audio.read(_MAX_AUDIO_UPLOAD_BYTES + 1)
-    if not audio_bytes:
-        raise HTTPException(status_code=400, detail="Empty audio upload.")
-    if len(audio_bytes) > _MAX_AUDIO_UPLOAD_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail="Audio upload is too large. Please record a shorter clip.",
-        )
+    audio_bytes = await read_audio_upload(audio)
 
     ext = _extension_for(audio.filename or "", content_type)
 
@@ -159,6 +152,7 @@ async def transcribe_audio(
             language=language,
             with_timestamps=False,
         )
+        enforce_audio_duration(result.get("duration_seconds"))
     except STTPayloadTooLarge as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
     except STTValidationError as exc:

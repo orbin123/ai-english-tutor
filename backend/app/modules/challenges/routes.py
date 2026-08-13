@@ -7,6 +7,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.audio_uploads import read_audio_upload
 from app.modules.auth.dependencies import require_learner
 from app.modules.auth.models import User
 from app.modules.challenges.ielts_sprint.schemas import (
@@ -238,7 +239,7 @@ async def upload_challenge_attempt_speaking(
 ) -> ChallengeSpeakingUploadRead:
     """Accept one browser-recorded speaking take for a live attempt."""
     service = ChallengeReadService(db)
-    audio_bytes = await audio.read()
+    audio_bytes = await read_audio_upload(audio)
     try:
         result = await service.upload_speaking_response(
             attempt_id=attempt_id,

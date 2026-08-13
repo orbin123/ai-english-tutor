@@ -31,6 +31,7 @@ from app.ai.imagegen.interface import (
     dimensions_for_aspect_ratio,
     size_string_for_aspect_ratio,
 )
+from app.core.ai_concurrency import ai_provider_slot
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -120,7 +121,8 @@ class OpenAIImageGenClient:
             "output_format": self._format,
         }
 
-        raw = await self._call_with_retries(kwargs)
+        async with ai_provider_slot():
+            raw = await self._call_with_retries(kwargs)
         image_bytes = self._extract_image_bytes(raw)
 
         self._log_usage(
