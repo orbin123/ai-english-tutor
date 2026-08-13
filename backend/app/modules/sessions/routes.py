@@ -28,6 +28,7 @@ from app.ai.pronunciation import (
     get_default_pronunciation_service,
 )
 from app.core.ai_rate_limit import ai_rate_limit
+from app.core.audio_uploads import enforce_wav_duration, read_audio_upload
 from app.core.database import get_db
 from app.modules.subscriptions.dependencies import require_active_access
 from app.modules.auth.dependencies import get_current_user, require_learner
@@ -884,8 +885,13 @@ async def score_pronunciation(
     language: str = Form(default="en-US"),
     current_user: User = Depends(get_current_user),
 ) -> PronunciationResult:
-    audio_bytes = await audio.read()
+    audio_bytes = await read_audio_upload(audio)
     filename = audio.filename or "recording.wav"
+    enforce_wav_duration(
+        audio_bytes,
+        filename=filename,
+        content_type=audio.content_type,
+    )
 
     service = get_default_pronunciation_service()
     try:

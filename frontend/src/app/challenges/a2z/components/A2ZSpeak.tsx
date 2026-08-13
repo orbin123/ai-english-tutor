@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Mic, MicOff } from 'lucide-react';
 
 import { WS_BASE_URL } from '@/lib/api-config';
+import { MAX_AUDIO_RECORDING_SECONDS } from '@/lib/audio-limits';
 
 // If the server's `final` frame never arrives (e.g. upstream stall), finish
 // anyway after this long, scoring whatever words we have so far. The frame
@@ -18,8 +19,9 @@ interface A2ZSpeakProps {
 }
 
 export function A2ZSpeak({ roundId, letter, level, reduceMotion, onFinish, onClose }: A2ZSpeakProps) {
+  const roundDuration = Math.min(level.time, MAX_AUDIO_RECORDING_SECONDS);
   const [phase, setPhase] = useState<'idle' | 'listening' | 'finishing'>('idle');
-  const [timeLeft, setTimeLeft] = useState(level.time);
+  const [timeLeft, setTimeLeft] = useState(roundDuration);
   const [words, setWords] = useState<string[]>([]);
   const [micError, setMicError] = useState<string | null>(null);
 
@@ -44,7 +46,7 @@ export function A2ZSpeak({ roundId, letter, level, reduceMotion, onFinish, onClo
     setMicError(message);
     stopRecording();
     setPhase('idle');
-    setTimeLeft(level.time);
+    setTimeLeft(roundDuration);
   };
 
   const stopRecording = () => {
@@ -230,7 +232,7 @@ export function A2ZSpeak({ roundId, letter, level, reduceMotion, onFinish, onClo
   }, []);
 
   const progressPct = Math.min(100, (words.length / level.words) * 100);
-  const timePct = Math.max(0, (timeLeft / level.time) * 100);
+  const timePct = Math.max(0, (timeLeft / roundDuration) * 100);
 
   return (
     <div className="a2z-stage fade-in">

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { tasksApi } from "@/lib/tasks-api";
 import { sessionsApi, type PronunciationResult } from "@/lib/sessions-api";
 import { blobToWav } from "@/lib/audio-utils";
+import { MAX_AUDIO_RECORDING_SECONDS } from "@/lib/audio-limits";
 import { resolveMediaUrl } from "@/lib/api-config";
 import type { SessionWidgetProps } from "./types";
 
@@ -347,7 +348,10 @@ export function SessionSpeakRecordWidget({ taskContent, disabled, onSubmit }: Se
       };
       recordingStartedAtRef.current = nowMs();
       recorder.start(250);
-      const cap = payload.speaking_duration_seconds || 60;
+      const cap = Math.min(
+        payload.speaking_duration_seconds || MAX_AUDIO_RECORDING_SECONDS,
+        MAX_AUDIO_RECORDING_SECONDS,
+      );
       timerRef.current = setInterval(() => {
         setElapsed((prev) => {
           const next = prev + 1;

@@ -12547,7 +12547,7 @@
     },
     "/debug/ai/ping": {
       "get": {
-        "description": "Smoke test the LLM client.\n\nSends one prompt to OpenAI and returns the reply. Useful for:\n  - confirming OPENAI_API_KEY is set + valid\n  - confirming LangSmith trace shows up under project\n    'ai-english-coach'\n  - sanity-checking the unified client after a deploy\n\nSafe to leave in production — it's a single short call.",
+        "description": "Smoke test the LLM client.\n\nSends one prompt to OpenAI and returns the reply. Useful for:\n  - confirming OPENAI_API_KEY is set + valid\n  - confirming LangSmith trace shows up under project\n    'ai-english-coach'\n  - sanity-checking the unified client after a deploy\n\nDevelopment-only. The router is absent in production and also carries a\nfail-closed production dependency so this call cannot spend provider quota.",
         "operationId": "ping_llm_debug_ai_ping_get",
         "responses": {
           "200": {
@@ -12615,7 +12615,7 @@
     },
     "/debug/ai/stt/transcribe": {
       "post": {
-        "description": "Transcribe one audio upload via Whisper.\n\nUseful for:\n  - verifying OpenAI STT is wired up\n  - testing word-level timestamps for fluency analysis later\n  - watching the cache hit on identical re-uploads (look for\n    `stt_cache_hit` in server logs)\n\nSample curl:\n  curl -F \"audio=@hello.mp3\" \\\n       -F \"with_timestamps=true\" \\\n       http://localhost:8000/debug/ai/stt/transcribe\n\nErrors:\n  400 - empty / malformed audio\n  413 - audio over 25 MB (OpenAI's hard limit)\n  502 - provider failure (timeout, rate limit, etc.)",
+        "description": "Transcribe one audio upload via Whisper.\n\nUseful for:\n  - verifying OpenAI STT is wired up\n  - testing word-level timestamps for fluency analysis later\n  - watching the cache hit on identical re-uploads (look for\n    `stt_cache_hit` in server logs)\n\nSample curl:\n  curl -F \"audio=@hello.mp3\" \\\n       -F \"with_timestamps=true\" \\\n       http://localhost:8000/debug/ai/stt/transcribe\n\nErrors:\n  400 - empty / malformed audio\n  413 - audio over 5 MiB or 45 seconds\n  502 - provider failure (timeout, rate limit, etc.)",
         "operationId": "stt_transcribe_debug_ai_stt_transcribe_post",
         "requestBody": {
           "content": {

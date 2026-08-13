@@ -12,6 +12,7 @@ from app.ai.pronunciation import (
     get_default_pronunciation_service,
 )
 from app.core.ai_rate_limit import ai_rate_limit
+from app.core.audio_uploads import enforce_wav_duration, read_audio_upload
 from app.core.database import get_db
 from app.modules.auth.dependencies import (
     get_current_user,
@@ -74,13 +75,13 @@ async def score_read_aloud(
             detail=f"Unknown passage_id: {passage_id!r}",
         )
 
-    audio_bytes = await audio.read()
-    if not audio_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Audio file is empty.",
-        )
+    audio_bytes = await read_audio_upload(audio)
     filename = audio.filename or "recording.wav"
+    enforce_wav_duration(
+        audio_bytes,
+        filename=filename,
+        content_type=audio.content_type,
+    )
 
     service = get_default_pronunciation_service()
     try:

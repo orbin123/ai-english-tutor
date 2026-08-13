@@ -27,6 +27,7 @@ from websockets import ClientConnection as DgConnection
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
+from app.core.ai_concurrency import ai_provider_slot
 from app.core.ai_rate_limit import get_limiter
 from app.core.config import settings
 from app.core.security import decode_token
@@ -184,7 +185,10 @@ async def stream_round(
     task = attempt.task_payload or {}
     letter: str = task.get("letter", "")
     target_words: int = task.get("target_words", 10)
-    round_time: int = int(task.get("round_time_seconds", 60) or 60)
+    round_time = min(
+        int(task.get("round_time_seconds", 60) or 60),
+        int(settings.MAX_AUDIO_DURATION_SECONDS),
+    )
     accepted: set[str] = set((attempt.response_payload or {}).get("accepted_words", []))
 
     dg_headers = {"Authorization": f"Token {settings.DEEPGRAM_API_KEY}"}
@@ -335,18 +339,21 @@ async def stream_round(
     stream_deadline = round_time + _DRAIN_MARGIN_SECONDS
 
     try:
-        async with websockets.connect(_DG_URL, additional_headers=dg_headers) as dg_ws:
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(
-                        _forward_audio(dg_ws),
-                        _handle_transcripts(dg_ws),
-                    ),
-                    timeout=stream_deadline,
-                )
-            except asyncio.TimeoutError:
-                logger.warning("a2z stream drain timeout round=%d", round_id)
-                done.set()
+        async with ai_provider_slot():
+            async with websockets.connect(
+                _DG_URL, additional_headers=dg_headers
+            ) as dg_ws:
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(
+                            _forward_audio(dg_ws),
+                            _handle_transcripts(dg_ws),
+                        ),
+                        timeout=stream_deadline,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("a2z stream drain timeout round=%d", round_id)
+                    done.set()
     except Exception as exc:
         logger.exception("a2z stream error round=%d: %s", round_id, exc)
         capture_to_sentry(exc)

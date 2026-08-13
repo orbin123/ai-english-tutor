@@ -87,3 +87,14 @@ def test_cors_origins_list_splits_and_strips() -> None:
         "https://a.example.com",
         "https://b.example.com",
     ]
+
+
+def test_zero_cost_resource_defaults_are_bounded() -> None:
+    settings = Settings(_env_file=None, **_REQUIRED)
+
+    assert settings.DB_POOL_SIZE == 3
+    assert settings.DB_MAX_OVERFLOW == 2
+    assert settings.DB_POOL_TIMEOUT == 10
+    assert settings.AI_MAX_CONCURRENT_JOBS == 3
+    assert settings.MAX_AUDIO_UPLOAD_BYTES == 5 * 1024 * 1024
+    assert settings.MAX_AUDIO_DURATION_SECONDS == 45

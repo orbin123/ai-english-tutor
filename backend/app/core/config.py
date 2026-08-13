@@ -1,6 +1,6 @@
 """Application configuration loaded from environment variables."""
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -42,6 +42,9 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str
+    DB_POOL_SIZE: int = Field(default=3, ge=1)
+    DB_MAX_OVERFLOW: int = Field(default=2, ge=0)
+    DB_POOL_TIMEOUT: float = Field(default=10.0, gt=0)
 
     # Redis
     redis_url: str
@@ -157,6 +160,12 @@ class Settings(BaseSettings):
     AI_RATE_LIMIT_ENABLED: bool = True
     AI_RATE_LIMIT_PER_MINUTE: int = 30
     AI_RATE_LIMIT_TRANSCRIBE_PER_MINUTE: int = 20
+    # Process-local ceiling across provider calls. The zero-cost deployment
+    # runs one worker, so this single semaphore bounds LLM, image, and audio
+    # concurrency without another infrastructure dependency.
+    AI_MAX_CONCURRENT_JOBS: int = Field(default=3, ge=1)
+    MAX_AUDIO_UPLOAD_BYTES: int = Field(default=5 * 1024 * 1024, ge=1)
+    MAX_AUDIO_DURATION_SECONDS: float = Field(default=45.0, gt=0)
     # Learning-session WebSocket: max incoming messages per user per minute.
     WS_MESSAGE_RATE_PER_MINUTE: int = 20
     # A2Z game: max Deepgram stream connections per user per minute

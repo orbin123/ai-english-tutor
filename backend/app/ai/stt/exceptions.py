@@ -35,7 +35,7 @@ class STTValidationError(STTError):
 
 
 class STTPayloadTooLarge(STTValidationError):
-    """Audio exceeds OpenAI's 25 MB hard limit.
+    """Audio exceeds the application's configured upload limit.
 
     Surfaced as 413 by routes. Subclass of STTValidationError so callers
     that catch the broader type still handle it; specific catchers can

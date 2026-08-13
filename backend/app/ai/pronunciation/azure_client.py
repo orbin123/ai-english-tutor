@@ -35,6 +35,7 @@ from app.ai.pronunciation.interface import (
     PronunciationResult,
     WordScore,
 )
+from app.core.ai_concurrency import ai_provider_slot
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -112,12 +113,13 @@ class AzurePronunciationClient:
             reference_text=reference_text,
             language=language,
         )
-        return await self._score_with_retries(
-            audio_bytes=audio_bytes,
-            filename=validated["filename"],
-            reference_text=validated["reference_text"],
-            language=validated["language"],
-        )
+        async with ai_provider_slot():
+            return await self._score_with_retries(
+                audio_bytes=audio_bytes,
+                filename=validated["filename"],
+                reference_text=validated["reference_text"],
+                language=validated["language"],
+            )
 
     async def _score_with_retries(
         self,

@@ -22,6 +22,7 @@ import { LandingNavbar } from "@/components/layout/LandingNavbar";
 import { AudioPlayer } from "@/components/ui/AudioPlayer";
 import { authApi } from "@/lib/auth-api";
 import { challengesApi } from "@/lib/challenges-api";
+import { MAX_AUDIO_RECORDING_SECONDS } from "@/lib/audio-limits";
 import type {
   ChallengeAttemptRead,
   ChallengeSpeakingUploadRead,
@@ -1045,7 +1046,9 @@ function SpeakingRecorder({
       intervalRef.current = window.setInterval(() => {
         setElapsed((current) => {
           const next = current + 1;
-          if (next >= durationSeconds) stopRecording();
+          if (next >= Math.min(durationSeconds, MAX_AUDIO_RECORDING_SECONDS)) {
+            stopRecording();
+          }
           return next;
         });
       }, 1000);

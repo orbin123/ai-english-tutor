@@ -42,6 +42,7 @@ from app.ai.tts.exceptions import (
     TTSValidationError,
 )
 from app.ai.tts.interface import DialogueTurn, SynthesizedAudio
+from app.core.ai_concurrency import ai_provider_slot
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -190,7 +191,8 @@ class OpenAITTSClient:
         if style_instructions and self._model == "gpt-4o-mini-tts":
             kwargs["instructions"] = style_instructions
 
-        audio_bytes = await self._call_with_retries(kwargs)
+        async with ai_provider_slot():
+            audio_bytes = await self._call_with_retries(kwargs)
 
         result: SynthesizedAudio = {
             "audio_bytes": audio_bytes,

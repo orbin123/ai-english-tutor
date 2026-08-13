@@ -16,6 +16,7 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 from app.core.ai_rate_limit import ai_rate_limit
+from app.core.audio_uploads import read_audio_upload
 from app.core.database import get_db
 from app.modules.auth.dependencies import require_learner
 from app.modules.auth.models import User
@@ -107,7 +108,7 @@ async def ingest_a2z_audio_chunk(
     db: Session = Depends(get_db),
 ) -> AudioChunkResponse:
     """Accept one audio chunk, transcribe it, and return newly found words."""
-    audio_bytes = await audio.read()
+    audio_bytes = await read_audio_upload(audio)
     try:
         return await A2ZService(db).ingest_audio_chunk(
             user_id=current_user.id,

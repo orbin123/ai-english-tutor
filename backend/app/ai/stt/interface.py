@@ -68,7 +68,8 @@ class ISTTClient(Protocol):
         """Transcribe audio bytes. Optionally include word timestamps.
 
         Args:
-            audio_bytes: Raw audio bytes. Must be < 25 MB (provider limit).
+            audio_bytes: Raw audio bytes. Must fit the configured application
+                upload limit (5 MiB by default).
             filename: A name like "recording.webm". The extension is what
                 providers use to detect the audio format — bytes alone
                 are not enough. Anything sensible works (e.g. "audio.mp3").
@@ -82,7 +83,7 @@ class ISTTClient(Protocol):
 
         Raises:
             STTValidationError: empty bytes, bad filename, oversized.
-            STTPayloadTooLarge: audio over 25 MB (subclass of validation).
+            STTPayloadTooLarge: audio over the application limit.
             STTAuthError: bad API key.
             STTRateLimited: rate-limited after all retries.
             STTTimeout: timed out after all retries.

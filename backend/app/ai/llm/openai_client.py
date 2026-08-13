@@ -40,6 +40,7 @@ from app.ai.llm.exceptions import (
     LLMValidationError,
 )
 from app.ai.llm.usage import UsageRecord, estimate_cost, log_usage
+from app.core.ai_concurrency import ai_provider_slot
 from app.core.config import settings
 
 log = structlog.get_logger(__name__)
@@ -148,7 +149,8 @@ class OpenAILLMClient:
             HumanMessage(content=user_prompt),
         ]
         try:
-            response = await chat.ainvoke(messages)
+            async with ai_provider_slot():
+                response = await chat.ainvoke(messages)
         except Exception as exc:
             raise self._translate_exception(exc) from exc
 
@@ -174,10 +176,11 @@ class OpenAILLMClient:
         ]
 
         try:
-            async for chunk in chat.astream(messages):
-                text = self._chunk_content_to_text(getattr(chunk, "content", ""))
-                if text:
-                    yield text
+            async with ai_provider_slot():
+                async for chunk in chat.astream(messages):
+                    text = self._chunk_content_to_text(getattr(chunk, "content", ""))
+                    if text:
+                        yield text
         except Exception as exc:
             raise self._translate_exception(exc) from exc
 
@@ -212,7 +215,8 @@ class OpenAILLMClient:
         ]
 
         try:
-            result = await structured_chat.ainvoke(messages)
+            async with ai_provider_slot():
+                result = await structured_chat.ainvoke(messages)
         except ValidationError as exc:
             # The LLM answered, but the answer didn't match the schema.
             # Don't retry — the prompt or schema needs work.

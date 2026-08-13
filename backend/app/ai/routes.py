@@ -4,7 +4,7 @@ Lightweight endpoints for verifying the AI layer works end-to-end.
 Mounted under /debug/ai.
 """
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from app.ai.imagegen import (
@@ -34,8 +34,25 @@ from app.ai.tts import (
     TTSValidationError,
     get_default_tts_service,
 )
+from app.core.audio_uploads import (
+    enforce_audio_duration,
+    enforce_wav_duration,
+    read_audio_upload,
+)
+from app.core.config import settings
 
-router = APIRouter(prefix="/debug/ai", tags=["debug"])
+
+def require_non_production_debug() -> None:
+    """Return 404 in production even if the router is mounted accidentally."""
+    if settings.environment == "production":
+        raise HTTPException(status_code=404, detail="Not found.")
+
+
+router = APIRouter(
+    prefix="/debug/ai",
+    tags=["debug"],
+    dependencies=[Depends(require_non_production_debug)],
+)
 
 
 # ---------------------------------------------------------------------------
@@ -51,7 +68,8 @@ async def ping_llm() -> dict[str, str]:
         'ai-english-coach'
       - sanity-checking the unified client after a deploy
 
-    Safe to leave in production — it's a single short call.
+    Development-only. The router is absent in production and also carries a
+    fail-closed production dependency so this call cannot spend provider quota.
     """
     client = get_default_llm_client()
     reply = await client.generate_text(
@@ -204,8 +222,13 @@ async def pronunciation_score(
       400 - invalid audio / unsupported format / missing reference text
       502 - provider failure (auth, timeout, rate limit, SDK error)
     """
-    audio_bytes = await audio.read()
+    audio_bytes = await read_audio_upload(audio)
     filename = audio.filename or "recording.wav"
+    enforce_wav_duration(
+        audio_bytes,
+        filename=filename,
+        content_type=audio.content_type,
+    )
 
     service = get_default_pronunciation_service()
     try:
@@ -248,10 +271,10 @@ async def stt_transcribe(
 
     Errors:
       400 - empty / malformed audio
-      413 - audio over 25 MB (OpenAI's hard limit)
+      413 - audio over 5 MiB or 45 seconds
       502 - provider failure (timeout, rate limit, etc.)
     """
-    audio_bytes = await audio.read()
+    audio_bytes = await read_audio_upload(audio)
     filename = audio.filename or "recording.webm"
 
     service = get_default_stt_service()
@@ -262,6 +285,7 @@ async def stt_transcribe(
             language=language,
             with_timestamps=with_timestamps,
         )
+        enforce_audio_duration(result.get("duration_seconds"))
     except STTPayloadTooLarge as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
     except STTValidationError as exc:

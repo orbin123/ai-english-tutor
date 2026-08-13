@@ -51,14 +51,11 @@ from app.ai.stt.exceptions import (
     STTValidationError,
 )
 from app.ai.stt.interface import TranscriptionResult, WordTimestamp
+from app.core.ai_concurrency import ai_provider_slot
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-
-# OpenAI's hard limit on audio file size for transcription endpoints.
-# Anything larger 400s; we reject pre-flight to give a clearer error.
-_MAX_AUDIO_BYTES = 25 * 1024 * 1024  # 25 MB
 
 # whisper-1 pricing: $0.006 per minute of audio.
 # https://openai.com/api/pricing/  (last checked 2026-05)
@@ -146,7 +143,8 @@ class OpenAISTTClient:
             # worth not lying about duration in our response.
             kwargs["response_format"] = "verbose_json"
 
-        raw = await self._call_with_retries(kwargs)
+        async with ai_provider_slot():
+            raw = await self._call_with_retries(kwargs)
         result = self._normalize_response(
             raw=raw,
             audio_bytes=audio_bytes,
@@ -168,11 +166,11 @@ class OpenAISTTClient:
         STTPayloadTooLarge subclass."""
         if not audio_bytes:
             raise STTValidationError("audio_bytes must be non-empty")
-        if len(audio_bytes) > _MAX_AUDIO_BYTES:
+        if len(audio_bytes) > settings.MAX_AUDIO_UPLOAD_BYTES:
             raise STTPayloadTooLarge(
                 f"Audio is {len(audio_bytes):,} bytes; "
-                f"OpenAI's limit is {_MAX_AUDIO_BYTES:,} bytes (25 MB). "
-                "Split the audio into smaller chunks before transcribing."
+                f"the application limit is {settings.MAX_AUDIO_UPLOAD_BYTES:,} "
+                "bytes (5 MiB). Record a shorter clip before transcribing."
             )
         if not filename or "." not in filename:
             raise STTValidationError(

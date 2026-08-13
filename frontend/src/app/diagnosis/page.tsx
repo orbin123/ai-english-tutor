@@ -17,6 +17,7 @@ import { useDiagnosis } from "@/hooks/useDiagnosis";
 import { useRequireAuth } from "@/hooks/useRequireAuth";
 import { authApi } from "@/lib/auth-api";
 import { diagnosisApi } from "@/lib/diagnosis-api";
+import { MAX_AUDIO_RECORDING_SECONDS } from "@/lib/audio-limits";
 import { getApiErrorMessage } from "@/lib/errors";
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -478,15 +479,17 @@ function StepReadAloud({
 
     // Live timer
     timerRef.current = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
+      const nextElapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+      setElapsed(Math.min(nextElapsed, MAX_AUDIO_RECORDING_SECONDS));
+      if (nextElapsed >= MAX_AUDIO_RECORDING_SECONDS) stopRecording();
     }, 1000);
   };
 
-  const stopRecording = () => {
+  function stopRecording() {
     if (timerRef.current) clearInterval(timerRef.current);
     mediaRecorderRef.current?.stop();
     setRecordState("transcribing"); // will be updated in onstop
-  };
+  }
 
   const resetRecording = () => {
     setRecordState("idle");
