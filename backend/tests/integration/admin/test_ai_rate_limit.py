@@ -14,6 +14,7 @@ import app.core.ai_rate_limit as ai_rate_limit_module
 from app.core.ai_rate_limit import (
     InMemorySlidingWindowLimiter,
     RATE_LIMIT_MESSAGE,
+    RedisSlidingWindowLimiter,
     ResilientLimiter,
     ai_rate_limit,
     get_limiter,
@@ -62,9 +63,48 @@ class _ExplodingLimiter:
 
 
 class TestResilience:
+    def test_explicit_memory_backend_never_connects_to_redis(self, monkeypatch):
+        import redis
+
+        monkeypatch.setattr(settings, "AI_RATE_LIMIT_BACKEND", "memory")
+        monkeypatch.setattr(settings, "redis_url", "redis://localhost:6379/0")
+        monkeypatch.setattr(
+            redis.Redis,
+            "from_url",
+            lambda *args, **kwargs: pytest.fail("memory backend contacted Redis"),
+        )
+        reset_limiter_for_tests()
+
+        assert isinstance(get_limiter(), InMemorySlidingWindowLimiter)
+
+    def test_redis_backend_uses_shared_limiter_when_configured(self, monkeypatch):
+        import redis
+
+        class _FakeRedis:
+            def ping(self):
+                return True
+
+        fake = _FakeRedis()
+        monkeypatch.setattr(settings, "AI_RATE_LIMIT_BACKEND", "redis")
+        monkeypatch.setattr(settings, "redis_url", "redis://localhost:6379/0")
+        monkeypatch.setattr(redis.Redis, "from_url", lambda *args, **kwargs: fake)
+        reset_limiter_for_tests()
+
+        limiter = get_limiter()
+        assert isinstance(limiter, ResilientLimiter)
+        assert isinstance(limiter._primary, RedisSlidingWindowLimiter)
+
+    def test_redis_backend_without_url_degrades_to_memory(self, monkeypatch):
+        monkeypatch.setattr(settings, "AI_RATE_LIMIT_BACKEND", "redis")
+        monkeypatch.setattr(settings, "redis_url", None)
+        reset_limiter_for_tests()
+
+        assert isinstance(get_limiter(), InMemorySlidingWindowLimiter)
+
     def test_factory_falls_back_when_redis_unreachable(self, monkeypatch):
         # Point at a port nothing listens on; the 0.25 s connect timeout makes
         # this fast. The factory must swallow the failure and serve in-memory.
+        monkeypatch.setattr(settings, "AI_RATE_LIMIT_BACKEND", "redis")
         monkeypatch.setattr(settings, "redis_url", "redis://127.0.0.1:1/0")
         reset_limiter_for_tests()
         limiter = get_limiter()

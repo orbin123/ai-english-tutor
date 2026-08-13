@@ -301,9 +301,8 @@ cp .env.example .env
 Minimum keys to get started:
 
 ```env
-# Database & cache
+# Database
 DATABASE_URL=postgresql://user:password@localhost:5432/lingos
-REDIS_URL=redis://localhost:6379/0
 
 # Auth
 JWT_SECRET=your-long-random-secret
@@ -317,6 +316,12 @@ SENTRY_DSN=                   # leave blank to disable
 ```
 
 > The full set of supported variables (Azure Speech, Razorpay, Resend email, OTP, Google OAuth, rate limits, etc.) is documented in [`.env.example`](.env.example).
+
+The local and zero-cost AI rate-limiter configuration is process-local and
+does not require Redis. Keep `AI_RATE_LIMIT_BACKEND=memory` with exactly one
+backend worker. Multi-worker deployments must select
+`AI_RATE_LIMIT_BACKEND=redis` and configure `REDIS_URL` so every worker shares
+the same rate-limit buckets.
 
 ### 3. Start infrastructure (Postgres + Redis)
 
@@ -361,7 +366,8 @@ docker compose up --build
 This starts:
 
 - **`coach_postgres`** — PostgreSQL 16, with a healthcheck and a named volume for persistence
-- **`coach_redis`** — Redis 7, used for caching, rate limiting, and Celery's broker
+- **`coach_redis`** — optional Redis 7 for shared AI rate-limit buckets in a
+  multi-worker configuration
 
 Ports are read from your `.env` (`POSTGRES_PORT`, `REDIS_PORT`). Stop everything with `docker compose down` (add `-v` to also drop the data volumes).
 

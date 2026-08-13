@@ -15,7 +15,6 @@ from app.core.config import Settings
 # reaches the after-validator regardless of ambient env / conftest.
 _REQUIRED = dict(
     database_url="sqlite:///./test.db",
-    redis_url="redis://localhost:6379/0",
     jwt_secret="test-secret",
     OPENAI_API_KEY="test",
     LANGCHAIN_API_KEY="test",
@@ -32,6 +31,7 @@ _SAFE_PROD = dict(
     OTP_HASHING_SECRET="a" * 32,
     AUTH_COOKIE_SECURE=True,
     cors_origins="https://app.example.com",
+    AI_RATE_LIMIT_BACKEND="memory",
     **_REQUIRED,
 )
 
@@ -95,6 +95,20 @@ def test_zero_cost_resource_defaults_are_bounded() -> None:
     assert settings.DB_POOL_SIZE == 3
     assert settings.DB_MAX_OVERFLOW == 2
     assert settings.DB_POOL_TIMEOUT == 10
+    assert settings.AI_RATE_LIMIT_BACKEND == "redis"
     assert settings.AI_MAX_CONCURRENT_JOBS == 3
     assert settings.MAX_AUDIO_UPLOAD_BYTES == 5 * 1024 * 1024
     assert settings.MAX_AUDIO_DURATION_SECONDS == 45
+
+
+def test_redis_url_is_optional_for_memory_backend(monkeypatch) -> None:
+    monkeypatch.delenv("REDIS_URL", raising=False)
+
+    settings = Settings(
+        _env_file=None,
+        AI_RATE_LIMIT_BACKEND="memory",
+        **_REQUIRED,
+    )
+
+    assert settings.AI_RATE_LIMIT_BACKEND == "memory"
+    assert settings.redis_url is None

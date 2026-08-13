@@ -12993,7 +12993,7 @@
     },
     "/health": {
       "get": {
-        "description": "Liveness probe — confirms the process is up. Always 200; no dependencies.\n\nUse this for the container/orchestrator liveness check: a 200 means \"the\nprocess is alive, don't kill it\". For \"is this task ready to serve traffic\"\nuse /health/ready, which checks DB + Redis.",
+        "description": "Liveness probe — confirms the process is up. Always 200; no dependencies.\n\nUse this for the container/orchestrator liveness check: a 200 means \"the\nprocess is alive, don't kill it\". For \"is this task ready to serve traffic\"\nuse /health/ready, which checks the database and any configured optional\ndependencies.",
         "operationId": "health_check_health_get",
         "responses": {
           "200": {
@@ -13019,7 +13019,7 @@
     },
     "/health/ready": {
       "get": {
-        "description": "Readiness probe — 200 only when DB **and** Redis are reachable.\n\nWired to the ALB/ECS target-group health check so a task with a broken\ndependency is pulled out of rotation instead of serving 500s. Returns 503\nwith a per-dependency breakdown when anything is down.",
+        "description": "Readiness probe for the database and configured optional dependencies.\n\nWired to the ALB/ECS target-group health check so a task with a broken\ndependency is pulled out of rotation instead of serving 500s. Returns 503\nwith a per-dependency breakdown when anything is down.",
         "operationId": "readiness_check_health_ready_get",
         "responses": {
           "200": {

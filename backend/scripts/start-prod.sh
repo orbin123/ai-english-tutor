@@ -9,7 +9,8 @@
 # Worker count: defaults to 1. Multi-worker is now SAFE for correctness — the
 # session-completion double-scoring race (audit B4) is guarded by the unique
 # constraint on session_scorecards.session_id, not an in-memory set. Still,
-# keep WEB_CONCURRENCY=1 at launch and scale by TASK COUNT on Fargate first
+# AI_RATE_LIMIT_BACKEND=memory requires WEB_CONCURRENCY=1 because its buckets
+# are process-local. Select the Redis backend before raising worker count.
 # (smaller tasks, granular ALB health checks); raise to (2 x vCPU)+1 per task
 # only when a single worker per task is the bottleneck.
 #

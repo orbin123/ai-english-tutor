@@ -2,9 +2,9 @@
 
 Unlike the IP-keyed ``AdminRateLimitMiddleware``, these limits are keyed by
 the authenticated user (mobile users share IPs behind NAT) and applied as a
-FastAPI dependency so the resolved ``User`` is available. Buckets live in
-Redis when it is reachable (multi-worker safe) and fall back to in-memory
-sliding windows otherwise, so dev and tests need no Redis.
+FastAPI dependency so the resolved ``User`` is available. The configured
+backend is either deliberately process-local memory (one worker only) or Redis
+(shared across workers, with a sticky in-memory fallback on runtime failure).
 """
 
 from __future__ import annotations
@@ -102,6 +102,14 @@ _limiter: SlidingWindowLimiter | None = None
 
 
 def _build_limiter() -> SlidingWindowLimiter:
+    if settings.AI_RATE_LIMIT_BACKEND == "memory":
+        logger.info("ai_rate_limit_using_memory_backend")
+        return InMemorySlidingWindowLimiter()
+
+    if not settings.redis_url:
+        logger.warning("ai_rate_limit_redis_url_missing_using_memory")
+        return InMemorySlidingWindowLimiter()
+
     try:
         import redis  # imported lazily so a missing package can't break startup
 
