@@ -1,15 +1,17 @@
-name: deploy
+name: AWS recovery deploy (manual only)
 
-# Backend CD (Phase 3). Implements the DEPLOY.md §6 contract:
+# Frozen AWS backend recovery workflow. Implements the former DEPLOY.md §6 contract:
 #   OIDC -> ECR push (git-<sha>) -> migration one-off task -> ECS rolling deploy
 #   -> wait stable -> smoke api /health/ready (auto-rollback on failure)
 #   -> smoke frontend www 200 (fails the run; backend untouched — G3).
 #
 # Triggers:
-#   * push to `main` -> auto-deploys PRODUCTION (the CI/CD lockstep, G1).
-#   * workflow_dispatch -> manual run; pick `staging` or `production` (replays,
-#     staging deploys). `github.event.inputs.environment` is null on a push, so
-#     every reference resolves it with `|| 'production'`.
+#   * workflow_dispatch only -> explicitly confirmed AWS recovery run; pick
+#     `staging` or `production`. Pushes and merges never invoke this workflow.
+#
+# Keep this workflow as readable recovery history until the owner explicitly
+# approves AWS recovery-material removal. Any configured environment protection
+# rules remain an additional boundary for a manually dispatched recovery run.
 # Frontend deploys on Vercel separately (AD-1) on the same `main` commit.
 #
 # Per-environment config lives in GitHub Environments (Settings -> Environments
@@ -19,8 +21,6 @@ name: deploy
 #   ECS_SUBNETS (comma-separated), ECS_SECURITY_GROUP, HEALTHCHECK_URL.
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       environment:
@@ -28,10 +28,14 @@ on:
         type: choice
         options: [staging, production]
         default: staging
+      confirm_aws_recovery:
+        description: Confirm this is an explicitly approved AWS recovery deployment
+        type: boolean
+        required: true
+        default: false
 
 concurrency:
-  # inputs.environment is null on a push -> default to production.
-  group: deploy-${{ github.event.inputs.environment || 'production' }}
+  group: aws-recovery-deploy-${{ inputs.environment }}
   cancel-in-progress: false # never interrupt an in-flight deploy
 
 permissions:
@@ -40,8 +44,9 @@ permissions:
 
 jobs:
   deploy:
+    if: ${{ inputs.confirm_aws_recovery }}
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'production' }}
+    environment: ${{ inputs.environment }}
     steps:
       - uses: actions/checkout@v7
 
