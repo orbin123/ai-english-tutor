@@ -1,6 +1,9 @@
 """Application configuration loaded from environment variables."""
 
+import ipaddress
+import re
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -47,6 +50,11 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = Field(default=3, ge=1)
     DB_MAX_OVERFLOW: int = Field(default=2, ge=0)
     DB_POOL_TIMEOUT: float = Field(default=10.0, gt=0)
+
+    # Gunicorn worker count. The production entrypoint reads the same
+    # WEB_CONCURRENCY variable, so configuration validation and runtime cannot
+    # silently disagree about whether a process-local limiter is safe.
+    WEB_CONCURRENCY: int = Field(default=1, ge=1)
 
     # Redis is optional in the single-worker zero-cost topology. Select Redis
     # explicitly for a multi-worker deployment; an empty URL is valid when the
@@ -258,12 +266,11 @@ class Settings(BaseSettings):
     BLOG_MEDIA_CACHE_DIR: str = "app/modules/blog/_media"
     BLOG_MEDIA_PUBLIC_URL_PREFIX: str = "/blog-media"
 
-    # Blob storage backend — "local" writes generated media to disk and serves
-    # it via StaticFiles (dev/MVP); "s3" stores it in S3 and serves public
-    # media via CloudFront (prod, where the Fargate filesystem is ephemeral and
-    # there may be >1 task). Selected by `build_blob_storage()` in
-    # app/ai/storage/__init__.py — callers never change.
-    STORAGE_BACKEND: str = "local"
+    # Blob storage backend — local disk for development, S3/CloudFront for the
+    # frozen AWS recovery path, or managed-identity Azure Blob storage for the
+    # zero-cost topology. Selected by `build_blob_storage()` in
+    # app/ai/storage/__init__.py; callers never change.
+    STORAGE_BACKEND: Literal["local", "s3", "azure"] = "local"
     # S3 bucket + region for PUBLIC generated media (required when
     # STORAGE_BACKEND=s3). Credentials come from the ambient AWS env (ECS task
     # role in prod).
@@ -285,6 +292,18 @@ class Settings(BaseSettings):
     AZURE_BLOB_PUBLIC_CONTAINER: str = "public-media"
     AZURE_BLOB_PRIVATE_CONTAINER: str = "learner-media"
     AZURE_BLOB_INTERNAL_CONTAINER: str = "internal-media"
+    # These declarations mirror the provisioned Azure container access levels
+    # and make an unsafe production deployment fail at application startup.
+    # "blob" permits direct anonymous reads but not container listing.
+    AZURE_BLOB_PUBLIC_CONTAINER_ACCESS: Literal["private", "blob", "container"] = (
+        "private"
+    )
+    AZURE_BLOB_PRIVATE_CONTAINER_ACCESS: Literal["private", "blob", "container"] = (
+        "private"
+    )
+    AZURE_BLOB_INTERNAL_CONTAINER_ACCESS: Literal["private", "blob", "container"] = (
+        "private"
+    )
 
     # Vector DB (Pinecone)
     PINECONE_API_KEY: str
@@ -367,20 +386,49 @@ class Settings(BaseSettings):
             )
         if not self.AUTH_COOKIE_SECURE:
             violations.append("AUTH_COOKIE_SECURE must be true behind https")
-        local_origins = [
-            o for o in self.cors_origins_list if "localhost" in o or "127.0.0.1" in o
-        ]
-        if local_origins:
-            violations.append(
-                f"CORS_ORIGINS must not contain localhost origins: {local_origins}"
-            )
         if not self.cors_origins_list:
             violations.append("CORS_ORIGINS must be set")
-        if self.STORAGE_BACKEND == "s3":
+        else:
+            unsafe_origins = [
+                origin
+                for origin in self.cors_origins_list
+                if not _is_safe_production_origin(origin)
+            ]
+            if unsafe_origins:
+                violations.append(
+                    "CORS_ORIGINS must contain only explicit HTTPS origins "
+                    f"without credentials, paths, wildcards, or local/private hosts: "
+                    f"{unsafe_origins}"
+                )
+        if not _is_safe_production_origin(self.frontend_url):
+            violations.append("FRONTEND_URL must be an explicit public HTTPS origin")
+        elif self.frontend_url not in self.cors_origins_list:
+            violations.append("FRONTEND_URL must also be listed in CORS_ORIGINS")
+
+        if self.DB_POOL_SIZE + self.DB_MAX_OVERFLOW > 5:
+            violations.append(
+                "DB_POOL_SIZE + DB_MAX_OVERFLOW must not exceed 5 production "
+                "application connections"
+            )
+
+        if self.AI_RATE_LIMIT_BACKEND == "memory" and self.WEB_CONCURRENCY != 1:
+            violations.append(
+                "WEB_CONCURRENCY must be 1 when AI_RATE_LIMIT_BACKEND=memory"
+            )
+        if self.AI_RATE_LIMIT_BACKEND == "redis" and not _is_valid_redis_url(
+            self.redis_url
+        ):
+            violations.append("REDIS_URL must be set when AI_RATE_LIMIT_BACKEND=redis")
+
+        if self.STORAGE_BACKEND == "local":
+            violations.append("STORAGE_BACKEND=local is not supported in production")
+        elif self.STORAGE_BACKEND == "s3":
             if not self.MEDIA_S3_BUCKET:
                 violations.append("MEDIA_S3_BUCKET must be set when STORAGE_BACKEND=s3")
             if not self.MEDIA_CDN_URL:
                 violations.append("MEDIA_CDN_URL must be set when STORAGE_BACKEND=s3")
+        elif self.STORAGE_BACKEND == "azure":
+            violations.extend(self._azure_blob_production_violations())
 
         if violations:
             raise ValueError(
@@ -388,6 +436,130 @@ class Settings(BaseSettings):
                 + "\n  - ".join(violations)
             )
         return self
+
+    def _azure_blob_production_violations(self) -> list[str]:
+        """Return fail-closed Azure endpoint, container, and privacy errors."""
+        violations: list[str] = []
+        account_urls = {
+            "AZURE_BLOB_PUBLIC_ACCOUNT_URL": self.AZURE_BLOB_PUBLIC_ACCOUNT_URL,
+            "AZURE_BLOB_PRIVATE_ACCOUNT_URL": self.AZURE_BLOB_PRIVATE_ACCOUNT_URL,
+        }
+        for field_name, account_url in account_urls.items():
+            if not _is_safe_azure_blob_account_url(account_url):
+                violations.append(
+                    f"{field_name} must be a credential-free HTTPS Azure Blob "
+                    "account endpoint"
+                )
+        public_account_host = urlsplit(self.AZURE_BLOB_PUBLIC_ACCOUNT_URL).hostname
+        private_account_host = urlsplit(self.AZURE_BLOB_PRIVATE_ACCOUNT_URL).hostname
+        if public_account_host and public_account_host == private_account_host:
+            violations.append(
+                "Azure public and private data must use separate storage accounts"
+            )
+
+        containers = {
+            "AZURE_BLOB_PUBLIC_CONTAINER": self.AZURE_BLOB_PUBLIC_CONTAINER,
+            "AZURE_BLOB_PRIVATE_CONTAINER": self.AZURE_BLOB_PRIVATE_CONTAINER,
+            "AZURE_BLOB_INTERNAL_CONTAINER": self.AZURE_BLOB_INTERNAL_CONTAINER,
+        }
+        for field_name, container in containers.items():
+            if not _is_valid_azure_container_name(container):
+                violations.append(
+                    f"{field_name} must be a valid lowercase Azure container name"
+                )
+        if len(set(containers.values())) != len(containers):
+            violations.append(
+                "Azure public/private/internal containers must be distinct"
+            )
+
+        if self.AZURE_BLOB_PUBLIC_CONTAINER_ACCESS != "blob":
+            violations.append(
+                "AZURE_BLOB_PUBLIC_CONTAINER_ACCESS must be blob "
+                "(direct reads without container listing)"
+            )
+        if self.AZURE_BLOB_PRIVATE_CONTAINER_ACCESS != "private":
+            violations.append("AZURE_BLOB_PRIVATE_CONTAINER_ACCESS must be private")
+        if self.AZURE_BLOB_INTERNAL_CONTAINER_ACCESS != "private":
+            violations.append("AZURE_BLOB_INTERNAL_CONTAINER_ACCESS must be private")
+        return violations
+
+
+_AZURE_CONTAINER_NAME = re.compile(
+    r"^(?=.{3,63}$)[a-z0-9](?:[a-z0-9]|-(?!-))*[a-z0-9]$"
+)
+_AZURE_BLOB_ACCOUNT_HOST = re.compile(r"^[a-z0-9]{3,24}\.blob\.core\.windows\.net$")
+
+
+def _is_safe_production_origin(origin: str) -> bool:
+    """Accept an exact public HTTPS origin, never a URL pattern or local host."""
+    try:
+        parsed = urlsplit(origin)
+        port = parsed.port
+    except ValueError:
+        return False
+    hostname = parsed.hostname
+    if (
+        parsed.scheme != "https"
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+        or "*" in origin
+        or (port is not None and port != 443)
+    ):
+        return False
+    normalized_host = hostname.rstrip(".").lower()
+    if normalized_host == "localhost" or normalized_host.endswith(".localhost"):
+        return False
+    try:
+        address = ipaddress.ip_address(normalized_host)
+    except ValueError:
+        return "." in normalized_host
+    return address.is_global
+
+
+def _is_safe_azure_blob_account_url(account_url: str) -> bool:
+    """Accept only a bare public-cloud Azure Blob account endpoint."""
+    try:
+        parsed = urlsplit(account_url)
+        port = parsed.port
+    except ValueError:
+        return False
+    hostname = (parsed.hostname or "").lower()
+    return bool(
+        parsed.scheme == "https"
+        and _AZURE_BLOB_ACCOUNT_HOST.fullmatch(hostname)
+        and parsed.username is None
+        and parsed.password is None
+        and port is None
+        and parsed.path in ("", "/")
+        and not parsed.query
+        and not parsed.fragment
+    )
+
+
+def _is_valid_redis_url(redis_url: str | None) -> bool:
+    """Require an addressable Redis endpoint when shared buckets are selected."""
+    if not redis_url or not redis_url.strip():
+        return False
+    try:
+        parsed = urlsplit(redis_url)
+        port = parsed.port
+    except ValueError:
+        return False
+    return bool(
+        parsed.scheme in {"redis", "rediss"}
+        and parsed.hostname
+        and port is not None
+        and not parsed.fragment
+    )
+
+
+def _is_valid_azure_container_name(container: str) -> bool:
+    """Apply Azure's lowercase DNS-style container naming constraints."""
+    return bool(_AZURE_CONTAINER_NAME.fullmatch(container))
 
 
 # Single shared instance. Fields are populated from the environment by
