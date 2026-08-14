@@ -22,6 +22,7 @@ venv/
 !/docs/AZURE_ZERO_COST_MIGRATION.md
 !/docs/AZURE_AGENT_MIGRATION_PLAYBOOK.md
 !/docs/AZURE_CICD_RUNBOOK.md
+!/docs/AZURE_DATA_MIGRATION_REHEARSAL.md
 
 # macOS (IMPORTANT for you)
 .DS_Store
@@ -63,6 +64,7 @@ backend/scripts/*
 !backend/scripts/seed_curriculum.py
 !backend/scripts/seed_ielts_challenge.py
 !backend/scripts/seed_a2z_challenge.py
+!backend/scripts/azure_data_rehearsal.py
 
 # Local archive of deprecated files (kept locally, not committed)
 backend/.archive/

@@ -281,6 +281,10 @@ No agent proceeds to production until the human supplies one of:
 
 The agent may write and test migration scripts against synthetic data. It must not point them at production without explicit approval.
 
+The local-only inventory and reconciliation rehearsal is documented in
+[`AZURE_DATA_MIGRATION_REHEARSAL.md`](./AZURE_DATA_MIGRATION_REHEARSAL.md). Its
+successful completion does not resolve Gate A or authorize production access.
+
 ### Gate B — Test provisioning
 
 Use an approved isolated test resource group only long enough to validate Terraform, identity, container startup, Blob privacy, and PostgreSQL connectivity. Because the account's hours/storage are aggregate, destroy the test stack after evidence is captured and verify no disks/IPs/restored databases remain.
