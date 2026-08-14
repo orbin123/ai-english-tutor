@@ -1,0 +1,97 @@
+name: Azure wake
+
+on:
+  workflow_dispatch:
+    inputs:
+      active_hours:
+        description: Bounded production live window (1-24 hours)
+        type: number
+        required: true
+        default: 6
+
+concurrency:
+  group: azure-production-operations
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  AZURE_CORE_OUTPUT: none
+  AZURE_RESOURCE_GROUP: rg-lingosai-prod
+  AZURE_VM_NAME: vm-lingosai-prod
+  AZURE_POSTGRES_SERVER: ${{ vars.AZURE_POSTGRES_SERVER }}
+  AZURE_API_BASE_URL: ${{ vars.AZURE_API_BASE_URL }}
+
+jobs:
+  wake:
+    name: start and verify production
+    if: ${{ github.ref == 'refs/heads/main' && vars.AZURE_AUTOMATION_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ vars.AZURE_API_BASE_URL }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AZURE_PRODUCTION_ENVIRONMENT_GUARD: ${{ vars.AZURE_PRODUCTION_ENVIRONMENT_GUARD }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate bounded input and endpoint
+        env:
+          ACTIVE_HOURS: ${{ inputs.active_hours }}
+        run: |
+          set -euo pipefail
+          [[ "$AZURE_PRODUCTION_ENVIRONMENT_GUARD" == "reviewed-and-protected" ]]
+          [[ "$ACTIVE_HOURS" =~ ^([1-9]|1[0-9]|2[0-4])$ ]]
+          [[ "$AZURE_API_BASE_URL" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?/?$ ]]
+
+      - name: Authenticate to Azure with GitHub OIDC
+        id: azure_login
+        uses: azure/login@8c334a195cbb38e46038007b304988d888bf676a
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set live window, start PostgreSQL, then start VM
+        id: wake
+        env:
+          ACTIVE_HOURS: ${{ inputs.active_hours }}
+        run: .github/scripts/azure-control-plane.sh wake "$ACTIVE_HOURS"
+
+      - name: Verify public liveness and readiness
+        if: ${{ steps.wake.outputs.deployment_recorded == 'true' }}
+        run: |
+          set -euo pipefail
+          base_url="${AZURE_API_BASE_URL%/}"
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error --max-time 10 "$base_url/health/live" >/dev/null \
+              && curl --fail --silent --show-error --max-time 10 "$base_url/health/ready" >/dev/null; then
+              echo "Production API is live and ready"
+              exit 0
+            fi
+            echo "Warm-up health attempt $attempt/30 failed"
+            sleep 10
+          done
+          echo "::error::Production failed to warm within the bounded health-check period"
+          exit 1
+
+      - name: Failure cleanup to cold state
+        if: ${{ failure() && steps.azure_login.outcome == 'success' }}
+        run: .github/scripts/azure-control-plane.sh sleep
+
+      - name: Wake summary
+        if: ${{ success() }}
+        env:
+          ACTIVE_UNTIL: ${{ steps.wake.outputs.active_until }}
+        run: |
+          {
+            echo "### Azure production is ready"
+            echo "- PostgreSQL: \`Ready\`"
+            echo "- VM: \`PowerState/running\`"
+            echo "- Active until: \`$ACTIVE_UNTIL\`"
+            echo "- Existing deployment restored: \`${{ steps.wake.outputs.deployment_recorded }}\`"
+            echo "- Run **Azure sleep** immediately after the approved session."
+          } >>"$GITHUB_STEP_SUMMARY"

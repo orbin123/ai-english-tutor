@@ -21,6 +21,7 @@ venv/
 # Reviewed production migration plan; keep this one report with the repository.
 !/docs/AZURE_ZERO_COST_MIGRATION.md
 !/docs/AZURE_AGENT_MIGRATION_PLAYBOOK.md
+!/docs/AZURE_CICD_RUNBOOK.md
 
 # macOS (IMPORTANT for you)
 .DS_Store

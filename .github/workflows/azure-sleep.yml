@@ -1,0 +1,52 @@
+name: Azure sleep
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: azure-production-operations
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  AZURE_CORE_OUTPUT: none
+  AZURE_RESOURCE_GROUP: rg-lingosai-prod
+  AZURE_VM_NAME: vm-lingosai-prod
+  AZURE_POSTGRES_SERVER: ${{ vars.AZURE_POSTGRES_SERVER }}
+
+jobs:
+  sleep:
+    name: drain, deallocate, and stop production
+    if: ${{ github.ref == 'refs/heads/main' && vars.AZURE_AUTOMATION_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AZURE_PRODUCTION_ENVIRONMENT_GUARD: ${{ vars.AZURE_PRODUCTION_ENVIRONMENT_GUARD }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Require reviewed Environment configuration
+        run: test "$AZURE_PRODUCTION_ENVIRONMENT_GUARD" = "reviewed-and-protected"
+
+      - name: Authenticate to Azure with GitHub OIDC
+        uses: azure/login@8c334a195cbb38e46038007b304988d888bf676a
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Expire live window and enforce cold state
+        run: .github/scripts/azure-control-plane.sh sleep
+
+      - name: Sleep summary
+        run: |
+          {
+            echo "### Azure production is cold"
+            echo "- VM: \`PowerState/deallocated\` (not merely stopped)"
+            echo "- PostgreSQL: \`Stopped\`"
+            echo "- Live window: expired; the watchdog will enforce this state hourly"
+          } >>"$GITHUB_STEP_SUMMARY"

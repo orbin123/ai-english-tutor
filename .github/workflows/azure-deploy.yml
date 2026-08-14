@@ -1,0 +1,243 @@
+name: Azure backend deploy
+
+# Production deployment is gated by the protected `production` Environment.
+# GitHub OIDC uses only non-secret identifiers; no Azure client secret exists.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/scripts/azure-*.sh"
+      - ".github/workflows/azure-deploy.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: azure-production-operations
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  AZURE_CORE_OUTPUT: none
+  AZURE_RESOURCE_GROUP: rg-lingosai-prod
+  AZURE_VM_NAME: vm-lingosai-prod
+  IMAGE_REPOSITORY: lingosai-backend
+
+jobs:
+  test:
+    name: test backend before deployment
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Install locked dependencies
+        run: uv sync --frozen
+      - name: Lint and format check
+        run: |
+          uv run ruff check app tests
+          uv run ruff format --check app tests
+      - name: Type check
+        run: uv run mypy app
+      - name: Unit and integration tests
+        run: uv run python -m pytest tests/unit tests/integration -q
+      - name: OpenAPI drift check
+        run: |
+          uv run python scripts/export_openapi.py
+          git diff --exit-code -- openapi.json
+
+  deploy:
+    name: push and deploy immutable digest
+    if: ${{ github.ref == 'refs/heads/main' && vars.AZURE_AUTOMATION_ENABLED == 'true' }}
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ vars.AZURE_API_BASE_URL }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AZURE_POSTGRES_SERVER: ${{ vars.AZURE_POSTGRES_SERVER }}
+      AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+      AZURE_API_BASE_URL: ${{ vars.AZURE_API_BASE_URL }}
+      AZURE_PRODUCTION_ENVIRONMENT_GUARD: ${{ vars.AZURE_PRODUCTION_ENVIRONMENT_GUARD }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate non-secret production identifiers
+        run: |
+          set -euo pipefail
+          [[ "$AZURE_PRODUCTION_ENVIRONMENT_GUARD" == "reviewed-and-protected" ]]
+          [[ "$AZURE_ACR_NAME" =~ ^[a-z0-9]{5,50}$ ]]
+          [[ "$AZURE_POSTGRES_SERVER" =~ ^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$ ]]
+          [[ "$AZURE_API_BASE_URL" =~ ^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?/?$ ]]
+
+      - name: Authenticate to Azure with GitHub OIDC
+        id: azure_login
+        # Pinned official azure/login v2 action; OIDC is the only auth path.
+        uses: azure/login@8c334a195cbb38e46038007b304988d888bf676a
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Require an active, healthy production window
+        run: .github/scripts/azure-control-plane.sh preflight
+
+      - name: Resolve approved registry
+        id: registry
+        run: |
+          set -euo pipefail
+          login_server="$(az acr show \
+            --name "$AZURE_ACR_NAME" \
+            --query loginServer \
+            --output tsv \
+            --only-show-errors)"
+          [[ "$login_server" == "$AZURE_ACR_NAME.azurecr.io" ]]
+          echo "login_server=$login_server" >>"$GITHUB_OUTPUT"
+
+      - name: Authenticate Docker to ACR
+        run: az acr login --name "$AZURE_ACR_NAME" --output none --only-show-errors
+
+      - name: Compute immutable commit tag
+        id: image
+        run: |
+          set -euo pipefail
+          tag="git-$GITHUB_SHA"
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+
+      - name: Check for an existing commit image
+        id: existing
+        run: |
+          set -euo pipefail
+          digest="$(az acr repository show \
+            --name "$AZURE_ACR_NAME" \
+            --image "$IMAGE_REPOSITORY:${{ steps.image.outputs.tag }}" \
+            --query digest \
+            --output tsv \
+            --only-show-errors 2>/dev/null || true)"
+          if [[ -n "$digest" ]]; then
+            [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+            echo "found=true" >>"$GITHUB_OUTPUT"
+            echo "digest=$digest" >>"$GITHUB_OUTPUT"
+          else
+            echo "found=false" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Docker Buildx
+        if: ${{ steps.existing.outputs.found != 'true' }}
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push commit image
+        id: build
+        if: ${{ steps.existing.outputs.found != 'true' }}
+        uses: docker/build-push-action@v7
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.registry.outputs.login_server }}/${{ env.IMAGE_REPOSITORY }}:${{ steps.image.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Resolve and verify pushed digest
+        id: resolved
+        env:
+          BUILD_DIGEST: ${{ steps.build.outputs.digest }}
+          EXISTING_DIGEST: ${{ steps.existing.outputs.digest }}
+        run: |
+          set -euo pipefail
+          digest="${EXISTING_DIGEST:-$BUILD_DIGEST}"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+
+          remote_digest="$(az acr repository show \
+            --name "$AZURE_ACR_NAME" \
+            --image "$IMAGE_REPOSITORY:${{ steps.image.outputs.tag }}" \
+            --query digest \
+            --output tsv \
+            --only-show-errors)"
+          [[ "$remote_digest" == "$digest" ]]
+
+          image_ref="${{ steps.registry.outputs.login_server }}/$IMAGE_REPOSITORY@$digest"
+          echo "digest=$digest" >>"$GITHUB_OUTPUT"
+          echo "image_ref=$image_ref" >>"$GITHUB_OUTPUT"
+
+      - name: Deploy image by digest on the VM
+        env:
+          IMAGE_REF: ${{ steps.resolved.outputs.image_ref }}
+        run: |
+          set -euo pipefail
+          az vm run-command invoke \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_VM_NAME" \
+            --command-id RunShellScript \
+            --scripts @.github/scripts/azure-vm-deploy.sh \
+            --parameters deploy "$IMAGE_REF" "$AZURE_ACR_NAME" \
+            --output none \
+            --only-show-errors
+
+      - name: External health checks and automatic application rollback
+        env:
+          IMAGE_REF: ${{ steps.resolved.outputs.image_ref }}
+        run: |
+          set -euo pipefail
+          base_url="${AZURE_API_BASE_URL%/}"
+          for attempt in $(seq 1 15); do
+            if curl --fail --silent --show-error --max-time 10 "$base_url/health/live" >/dev/null \
+              && curl --fail --silent --show-error --max-time 10 "$base_url/health/ready" >/dev/null; then
+              echo "External health checks passed for $IMAGE_REF"
+              exit 0
+            fi
+            echo "External health attempt $attempt/15 failed"
+            sleep 8
+          done
+
+          echo "::error::External health checks failed; restoring the previous application digest"
+          az vm run-command invoke \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_VM_NAME" \
+            --command-id RunShellScript \
+            --scripts @.github/scripts/azure-vm-deploy.sh \
+            --parameters rollback unused "$AZURE_ACR_NAME" \
+            --output none \
+            --only-show-errors || echo "::error::Automatic application rollback also failed"
+          exit 1
+
+      - name: Record deployed digest in non-secret resource-group tags
+        env:
+          DEPLOYED_DIGEST: ${{ steps.resolved.outputs.digest }}
+        run: |
+          set -euo pipefail
+          group_id="$(az group show \
+            --name "$AZURE_RESOURCE_GROUP" \
+            --query id \
+            --output tsv \
+            --only-show-errors)"
+          az tag update \
+            --resource-id "$group_id" \
+            --operation Merge \
+            --tags \
+              "lingosai-deployed-digest=$DEPLOYED_DIGEST" \
+              "lingosai-deployed-sha=$GITHUB_SHA" \
+            --output none \
+            --only-show-errors
+
+      - name: Deployment summary
+        env:
+          IMAGE_REF: ${{ steps.resolved.outputs.image_ref }}
+        run: |
+          {
+            echo "### Azure backend deployment"
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Image: \`$IMAGE_REF\`"
+            echo "- Deployment: digest-pinned with external live/readiness checks"
+            echo "- Database migrations: forward-only; never rolled back automatically"
+          } >>"$GITHUB_STEP_SUMMARY"

@@ -2,7 +2,8 @@ name: docker
 
 # Proves the backend image builds reproducibly and is free of HIGH/CRITICAL
 # CVEs on every PR that touches the backend or this workflow. Non-pushing:
-# pushing the image to ECR is wired in Phase 3 (deploy.yml).
+# ACR publishing is separately gated in azure-deploy.yml; deploy.yml remains
+# manual AWS recovery history only.
 
 on:
   push:
