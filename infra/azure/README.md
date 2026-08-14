@@ -2,7 +2,9 @@
 
 This directory describes the minimal production topology approved in
 `docs/AZURE_ZERO_COST_MIGRATION.md`. It does not deploy anything, configure DNS,
-move data, populate Key Vault, or add CI/CD/wake/sleep automation.
+move data, or populate Key Vault. CI/CD, cold-state control, and the separately
+reviewed post-Terraform VM host bootstrap live under `.github/` and remain
+disabled until their production gates pass.
 
 ## Layout
 
@@ -40,6 +42,7 @@ terraform -chdir=environments/prod init -backend=false
 terraform -chdir=environments/prod validate
 terraform -chdir=environments/prod test
 bash tests/static_guardrails.sh
+bash tests/host_contract_guardrails.sh
 ```
 
 The Terraform test uses a mock provider and proves that an unapproved region

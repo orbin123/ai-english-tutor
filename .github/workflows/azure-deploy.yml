@@ -10,6 +10,12 @@ on:
       - "backend/**"
       - ".github/scripts/azure-*.sh"
       - ".github/workflows/azure-deploy.yml"
+      - "infra/azure/tests/host_contract_guardrails.sh"
+  pull_request:
+    paths:
+      - ".github/scripts/azure-*.sh"
+      - ".github/workflows/azure-deploy.yml"
+      - "infra/azure/tests/host_contract_guardrails.sh"
   workflow_dispatch:
 
 concurrency:
@@ -35,6 +41,9 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v7
+      - name: Validate Azure host contract
+        working-directory: .
+        run: bash infra/azure/tests/host_contract_guardrails.sh
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
