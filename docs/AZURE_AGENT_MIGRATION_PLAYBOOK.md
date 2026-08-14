@@ -274,10 +274,23 @@ Do not add Azure client secrets. The workflow must use OIDC.
 
 ### Gate A — Human data-recovery decision
 
-No agent proceeds to production until the human supplies one of:
+**Resolved 14 August 2026:** the owner approved a fresh Azure database with no
+AWS data restoration. AWS resources, code, credentials, and data remain recovery
+evidence until their separately approved removal phase; this decision does not
+authorize access to or deletion of them.
+
+The accepted Gate A choices were:
 
 - verified RDS dump and S3 inventory/export, with reconciliation expectations; or
 - written approval that Azure begins as a fresh environment.
+
+The next code-only package is the fail-closed, single-account administrator
+bootstrap documented in
+[`AZURE_FRESH_START_ADMIN_BOOTSTRAP.md`](./AZURE_FRESH_START_ADMIN_BOOTSTRAP.md).
+It receives identity and credential material only at execution time, assigns
+exactly `admin` and `super_admin` (never `learner`), is idempotent before
+activation, and refuses an unexpected user, runtime row, schema, or role
+catalog. Its merge does not authorize running it against Azure.
 
 The agent may write and test migration scripts against synthetic data. It must not point them at production without explicit approval.
 

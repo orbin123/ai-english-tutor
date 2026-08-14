@@ -1,7 +1,9 @@
 # Azure data-migration rehearsal
 
 This runbook is the code-only work package after PR 8. It implements the
-playbook's suggested **migration-script rehearsal** while Gate A remains open.
+playbook's suggested **migration-script rehearsal**. Gate A was subsequently
+resolved on 14 August 2026 in favor of a fresh Azure database with no AWS data
+restoration.
 It does not authorize or perform production data recovery, Azure provisioning,
 RDS/S3 access, Blob transfer, PostgreSQL restore, or cutover.
 
@@ -71,10 +73,12 @@ invalid or unsafe input. JSON inventories can contain object names and table
 metadata; keep real inventories out of Git and share them only through the
 approved recovery-evidence channel.
 
-## Evidence required before Gate D
+## Historical rehearsal evidence
 
-The owner must first resolve Gate A with either a verified RDS dump plus S3
-inventory/export or written fresh-start approval. A later production runbook
-must then define approved endpoints, encrypted evidence storage, exact transfer
-commands, source/destination counts and checksums, acceptance thresholds, and
-failure cleanup. It must be reviewed before any production connection or copy.
+The local synthetic rehearsal remains useful recovery-tool evidence, but it is
+not part of the approved fresh-start production path and authorizes no
+production connection or copy. The next code-only package is the single-account
+bootstrap in
+[`AZURE_FRESH_START_ADMIN_BOOTSTRAP.md`](./AZURE_FRESH_START_ADMIN_BOOTSTRAP.md).
+AWS recovery evidence remains protected until the separately approved removal
+phase.

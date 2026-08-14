@@ -101,6 +101,11 @@ a separately reviewed bootstrap operation:
 - the application managed-identity database login, Key Vault access, Blob
   access, CORS, OAuth/payment callbacks, DNS, and media privacy have passed their
   separate gates.
+- for the initial fresh database only, the owner-approved administrator is
+  created and verified through the fail-closed process in
+  [`AZURE_FRESH_START_ADMIN_BOOTSTRAP.md`](./AZURE_FRESH_START_ADMIN_BOOTSTRAP.md)
+  before public application traffic is allowed; this is a separately approved
+  one-time operation, not an automatic deployment step.
 
 The workflows never write the environment file and never print it. VM Run
 Command output must still be treated as operationally sensitive and retained
