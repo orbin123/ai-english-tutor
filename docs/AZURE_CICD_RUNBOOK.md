@@ -100,7 +100,8 @@ a separately reviewed bootstrap operation:
   one worker, host networking, a 768 MiB memory limit, and bounded local logs;
 - the application managed-identity database login, Key Vault access, Blob
   access, CORS, OAuth/payment callbacks, DNS, and media privacy have passed their
-  separate gates.
+  separate gates. The database gate and credential-free runtime URL are defined
+  in [`AZURE_POSTGRES_MANAGED_IDENTITY.md`](./AZURE_POSTGRES_MANAGED_IDENTITY.md).
 - for the initial fresh database only, the owner-approved administrator is
   created and verified through the fail-closed process in
   [`AZURE_FRESH_START_ADMIN_BOOTSTRAP.md`](./AZURE_FRESH_START_ADMIN_BOOTSTRAP.md)

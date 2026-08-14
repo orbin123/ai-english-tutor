@@ -99,6 +99,7 @@ Use the conventional-commit style the history follows (`feat(scope): …`, `fix(
 
 - All backend config flows through `app/core/config.py` (`pydantic-settings`). It reads the **single repo-root `.env`** (`env_file="../.env"`, relative to `backend/`). Missing required vars crash the app at startup — that's intentional. Copy `.env.example` to `.env` to start.
 - `settings.database_url` is given as `postgresql://…`; `app/core/database.py` rewrites it to `postgresql+psycopg://…` (psycopg 3). Don't hardcode the driver in the URL.
+- Azure production sets `DATABASE_AUTH_MODE=azure-managed-identity` and uses a passwordless `DATABASE_URL`; `app/core/azure_postgres.py` injects a current Entra token for every new physical SQLAlchemy connection. Keep the fixed VM role, Azure host, port, database, and `sslmode=require` contract in `docs/AZURE_POSTGRES_MANAGED_IDENTITY.md`.
 - Tests don't need a real `.env`: `tests/conftest.py` sets dummy env vars and a SQLite `DATABASE_URL` before settings load.
 - The standalone `backend/check_*.py`, `delete_bugged_session.py`, and repo-root `test_db.py` scripts are ad-hoc DB debugging tools with hardcoded local connection strings — not part of the app. The root `backup*.sql` files are local DB dumps.
 

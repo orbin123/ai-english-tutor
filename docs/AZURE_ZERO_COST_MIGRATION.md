@@ -484,7 +484,7 @@ Do not create a load balancer, application gateway, NAT Gateway, Bastion, VPN Ga
 - application pool maximum five connections;
 - collect sizes from PostgreSQL itself, not a paid logging workspace.
 
-Private networking is normally desirable, but private endpoints/DNS and routing complicate this tiny budget. An exact-IP firewall and TLS are an acceptable tradeoff for this constrained deployment, provided the database password is strong and rotated.
+Private networking is normally desirable, but private endpoints/DNS and routing complicate this tiny budget. An exact-IP firewall, TLS, and Microsoft Entra-only authentication through the VM managed identity are the accepted tradeoff for this constrained deployment. Do not create or store a database password.
 
 ### Blob Storage
 
@@ -510,7 +510,7 @@ Private networking is normally desirable, but private endpoints/DNS and routing 
 
 - Standard vault with soft delete at the minimum policy-compatible retention;
 - RBAC authorization and managed identities;
-- store database password, OAuth secrets, provider keys, Razorpay secrets, email credentials, and webhook secrets;
+- store OAuth secrets, provider keys, Razorpay secrets, email credentials, and webhook secrets; PostgreSQL is Entra-only and has no database password;
 - application/deployment reads secrets once at boot or deployment—not on every request;
 - never put secret values in Terraform variables/state, GitHub Actions output, Docker image layers, or command history.
 

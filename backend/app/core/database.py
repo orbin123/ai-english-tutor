@@ -3,12 +3,16 @@
 from collections.abc import Generator
 
 from sqlalchemy import create_engine
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
+from app.core.azure_postgres import install_azure_postgres_auth
 from app.core.config import settings
 
 # Engine
-_db_url = settings.database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+_db_url = make_url(settings.database_url)
+if _db_url.drivername == "postgresql":
+    _db_url = _db_url.set(drivername="postgresql+psycopg")
 
 engine = create_engine(
     _db_url,
@@ -18,6 +22,8 @@ engine = create_engine(
     pool_timeout=settings.DB_POOL_TIMEOUT,
     pool_pre_ping=True,
 )
+if settings.DATABASE_AUTH_MODE == "azure-managed-identity":
+    install_azure_postgres_auth(engine)
 
 # Session Factory
 SessionLocal = sessionmaker(

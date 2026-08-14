@@ -3,7 +3,7 @@
 import ipaddress
 import re
 from typing import Literal
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -47,6 +47,10 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str
+    # Azure production uses the VM's system-assigned managed identity and an
+    # Entra-only PostgreSQL server. The default preserves local development and
+    # the frozen AWS recovery path, both of which still use password auth.
+    DATABASE_AUTH_MODE: Literal["password", "azure-managed-identity"] = "password"
     DB_POOL_SIZE: int = Field(default=3, ge=1)
     DB_MAX_OVERFLOW: int = Field(default=2, ge=0)
     DB_POOL_TIMEOUT: float = Field(default=10.0, gt=0)
@@ -411,6 +415,8 @@ class Settings(BaseSettings):
                 "application connections"
             )
 
+        violations.extend(self._database_production_violations())
+
         if self.AI_RATE_LIMIT_BACKEND == "memory" and self.WEB_CONCURRENCY != 1:
             violations.append(
                 "WEB_CONCURRENCY must be 1 when AI_RATE_LIMIT_BACKEND=memory"
@@ -483,11 +489,64 @@ class Settings(BaseSettings):
             violations.append("AZURE_BLOB_INTERNAL_CONTAINER_ACCESS must be private")
         return violations
 
+    def _database_production_violations(self) -> list[str]:
+        """Return fail-closed Azure PostgreSQL authentication errors."""
+        violations: list[str] = []
+        try:
+            parsed = urlsplit(self.database_url)
+            port = parsed.port
+        except ValueError:
+            return ["DATABASE_URL must be a valid database URL"]
+
+        hostname = (parsed.hostname or "").rstrip(".").lower()
+        is_azure_postgres = bool(_AZURE_POSTGRES_HOST.fullmatch(hostname))
+
+        if self.DATABASE_AUTH_MODE == "password":
+            if is_azure_postgres:
+                violations.append(
+                    "Azure PostgreSQL requires "
+                    "DATABASE_AUTH_MODE=azure-managed-identity"
+                )
+            return violations
+
+        if parsed.scheme != "postgresql":
+            violations.append("managed-identity DATABASE_URL must use postgresql://")
+        if not is_azure_postgres:
+            violations.append(
+                "managed-identity DATABASE_URL must target an Azure PostgreSQL "
+                "Flexible Server host"
+            )
+        if parsed.username != "vm-lingosai-prod":
+            violations.append(
+                "managed-identity DATABASE_URL user must be vm-lingosai-prod"
+            )
+        if parsed.password is not None:
+            violations.append(
+                "managed-identity DATABASE_URL must not contain a password"
+            )
+        if port != 5432:
+            violations.append(
+                "managed-identity DATABASE_URL must use PostgreSQL port 5432"
+            )
+        if parsed.path != "/lingosai":
+            violations.append(
+                "managed-identity DATABASE_URL must target the lingosai database"
+            )
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        if query != {"sslmode": ["require"]}:
+            violations.append(
+                "managed-identity DATABASE_URL must set only sslmode=require"
+            )
+        return violations
+
 
 _AZURE_CONTAINER_NAME = re.compile(
     r"^(?=.{3,63}$)[a-z0-9](?:[a-z0-9]|-(?!-))*[a-z0-9]$"
 )
 _AZURE_BLOB_ACCOUNT_HOST = re.compile(r"^[a-z0-9]{3,24}\.blob\.core\.windows\.net$")
+_AZURE_POSTGRES_HOST = re.compile(
+    r"^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]\.postgres\.database\.azure\.com$"
+)
 
 
 def _is_safe_production_origin(origin: str) -> bool:
