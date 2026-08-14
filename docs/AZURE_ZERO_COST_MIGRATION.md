@@ -696,6 +696,13 @@ PostgreSQL feedback-memory logs appear to be the durable source from which vecto
 - Export and inventory it before any destructive source action.
 - If none exists, obtain explicit acceptance that Azure begins as a fresh production environment.
 
+Gate A was resolved on 14 August 2026 with that explicit fresh-start acceptance:
+no AWS data will be restored. The initial sole administrator must be created
+through the fail-closed process in
+[`AZURE_FRESH_START_ADMIN_BOOTSTRAP.md`](./AZURE_FRESH_START_ADMIN_BOOTSTRAP.md)
+using identity and credential input supplied outside Git. This decision does
+not authorize AWS access/removal or execution against Azure.
+
 ### Phase 2 — application preparation
 
 - Add Azure Blob adapter and private/internal visibility.
