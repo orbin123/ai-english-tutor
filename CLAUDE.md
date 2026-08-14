@@ -74,6 +74,10 @@ The workflow has no `push` trigger, so pushes and merges to `main` cannot invoke
 
 The four Azure workflows and their host scripts implement PR 7 only. All Azure cloud jobs require `AZURE_AUTOMATION_ENABLED == 'true'`; any missing or different value leaves them skipped. Deployment is restricted to `main`, uses the protected `production` GitHub Environment, requires an already-active live window, pushes the backend to ACR under `git-<full-sha>`, and passes only the resolved `sha256` digest to the VM. Application rollback restores the prior digest; Alembic migrations remain forward-only. Wake defaults to six hours and rejects values outside 1–24. Sleep always deallocates the VM before stopping PostgreSQL. The hourly watchdog does not use the reviewer-gated Environment because an unattended stop cannot wait for approval; its OIDC trust must instead be restricted to the default branch. See `docs/AZURE_CICD_RUNBOOK.md` for required human-owned setup and the VM host contract. Do not enable or run any Azure workflow until those gates are reviewed and complete.
 
+### Frontend API availability
+
+Vercel remains the Phase 1 frontend host while the Azure API is operated on demand. `ApiAvailabilityBanner` probes only `/health/ready`: 2xx is live, 503 is warming, a network failure is offline/unreachable, browser offline is a separate state, and any other HTTP response is an unexpected service error. Do not infer sleep state from ordinary feature requests or Axios errors. The banner keeps public pages usable, retries unavailable states on a bounded interval only while the tab is visible, and allows a manual retry.
+
 ### DCO sign-off — required on every commit
 A required `DCO` check (the probot DCO app) blocks any PR whose commits lack a `Signed-off-by:` trailer whose name/email **match the commit author**. Always commit with sign-off:
 ```bash
