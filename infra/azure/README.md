@@ -21,10 +21,11 @@ is intentionally unchanged.
 
 ## Region and cloud-access gate
 
-No Azure region has been approved. `environments/prod/locals.tf` therefore has
-an empty `approved_locations` set. Any plan fails until the owner approves one
-exact region and a reviewed commit adds only that region to the set. Central
-India must not be added merely because it is the current candidate.
+The owner approved Central India on 15 August 2026 after the free-service
+meters and availability of `Standard_B2ats_v2` and PostgreSQL
+`B_Standard_B1ms` were verified in subscription
+`e231ab32-f4d4-4a1b-b96c-3cf279036ab7`. Both Terraform roots allow exactly
+`centralindia`; the tests reject any other region.
 
 A real plan also requires explicit approval for the subscription, tenant,
 Reader identity, and remote-state discovery. This PR performs no Azure login,
