@@ -15,7 +15,7 @@ for script in "$bootstrap" "$verify" "$deploy"; do
 done
 
 for script in "$bootstrap" "$verify"; do
-  rg --quiet 'EXPECTED_API_HOSTNAME="api\.lingosai\.com"' "$script"
+  grep -Eq 'EXPECTED_API_HOSTNAME="api\.lingosai\.com"' "$script"
 done
 
 HOST_SCRIPT="$bootstrap" bash -c '
@@ -99,29 +99,29 @@ EOF
   exit 1
 fi
 
-rg --quiet 'az login --identity' "$bootstrap"
-rg --quiet 'az keyvault secret show' "$bootstrap"
-rg --quiet -- '--query value' "$bootstrap"
-rg --quiet 'install -o root -g root -m 0600' "$bootstrap"
-rg --quiet 'DATABASE_AUTH_MODE=azure-managed-identity' "$bootstrap"
-rg --quiet 'DATABASE_URL=postgresql://vm-lingosai-prod@' "$bootstrap"
-rg --quiet 'STORAGE_BACKEND=azure' "$bootstrap"
-rg --quiet 'request_body' "$bootstrap"
-rg --quiet 'max_size 5MB' "$bootstrap"
-rg --quiet 'dpkg --compare-versions.*caddy_version' "$bootstrap"
-rg --quiet 'reverse_proxy 127\.0\.0\.1:8000' "$bootstrap"
-rg --quiet '@maintenance file /maintenance' "$bootstrap"
-rg --quiet 'SystemMaxUse=100M' "$bootstrap"
-rg --quiet 'fallocate -l 1G /swapfile' "$bootstrap"
+grep -Eq 'az login --identity' "$bootstrap"
+grep -Eq 'az keyvault secret show' "$bootstrap"
+grep -Eq -- '--query value' "$bootstrap"
+grep -Eq 'install -o root -g root -m 0600' "$bootstrap"
+grep -Eq 'DATABASE_AUTH_MODE=azure-managed-identity' "$bootstrap"
+grep -Eq 'DATABASE_URL=postgresql://vm-lingosai-prod@' "$bootstrap"
+grep -Eq 'STORAGE_BACKEND=azure' "$bootstrap"
+grep -Eq 'request_body' "$bootstrap"
+grep -Eq 'max_size 5MB' "$bootstrap"
+grep -Eq 'dpkg --compare-versions.*caddy_version' "$bootstrap"
+grep -Eq 'reverse_proxy 127\.0\.0\.1:8000' "$bootstrap"
+grep -Eq '@maintenance file /maintenance' "$bootstrap"
+grep -Eq 'SystemMaxUse=100M' "$bootstrap"
+grep -Eq 'fallocate -l 1G /swapfile' "$bootstrap"
 
-rg --quiet 'az keyvault secret show' "$verify"
-rg --quiet -- '--query id' "$verify"
-rg --quiet 'az acr login' "$verify"
-rg --quiet -- '--expose-token' "$verify"
-rg --quiet '/dev/tcp/.*/5432' "$verify"
+grep -Eq 'az keyvault secret show' "$verify"
+grep -Eq -- '--query id' "$verify"
+grep -Eq 'az acr login' "$verify"
+grep -Eq -- '--expose-token' "$verify"
+grep -Eq '/dev/tcp/.*/5432' "$verify"
 
 forbidden='client[_-]?secret|administrator_password|docker[[:space:]]+run.*--privileged|0\.0\.0\.0/0'
-if rg --ignore-case "$forbidden" "$bootstrap" "$verify"; then
+if grep -Eiq "$forbidden" "$bootstrap" "$verify"; then
   printf 'Forbidden host bootstrap pattern detected.\n' >&2
   exit 1
 fi
