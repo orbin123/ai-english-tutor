@@ -1,8 +1,7 @@
 locals {
-  # Deliberately empty. A separate reviewed change may add exactly one region
-  # only after the owner verifies subscription entitlement and regional SKU
-  # availability. The documented candidate is not an approved value.
-  approved_locations = toset([])
+  # Approved by the owner after verifying the subscription's free-service
+  # meters and both required SKUs in Central India on 15 August 2026.
+  approved_locations = toset(["centralindia"])
 
   vm_size                    = "Standard_B2ats_v2"
   os_disk_type               = "Premium_LRS"
@@ -32,7 +31,7 @@ check "approved_location" {
       length(local.approved_locations) == 1 &&
       contains(local.approved_locations, var.location)
     )
-    error_message = "No Azure region is approved; a real plan is blocked pending owner review."
+    error_message = "The requested Azure region is outside the single owner-approved production region."
   }
 }
 

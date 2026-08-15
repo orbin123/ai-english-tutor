@@ -1,6 +1,7 @@
 locals {
-  # Intentionally empty until the owner approves one exact region in review.
-  approved_locations = toset([])
+  # Approved by the owner after verifying the subscription's free-service
+  # meters and both required SKUs in Central India on 15 August 2026.
+  approved_locations = toset(["centralindia"])
 }
 
 resource "azurerm_resource_group" "state" {

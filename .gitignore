@@ -25,6 +25,7 @@ venv/
 !/docs/AZURE_DATA_MIGRATION_REHEARSAL.md
 !/docs/AZURE_FRESH_START_ADMIN_BOOTSTRAP.md
 !/docs/AZURE_POSTGRES_MANAGED_IDENTITY.md
+!/docs/AZURE_VM_HOST_BOOTSTRAP.md
 
 # macOS (IMPORTANT for you)
 .DS_Store
@@ -67,6 +68,7 @@ backend/scripts/*
 !backend/scripts/seed_ielts_challenge.py
 !backend/scripts/seed_a2z_challenge.py
 !backend/scripts/azure_data_rehearsal.py
+!backend/scripts/bootstrap_azure_postgres.py
 !backend/scripts/bootstrap_fresh_admin.py
 
 # Local archive of deprecated files (kept locally, not committed)

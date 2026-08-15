@@ -99,8 +99,11 @@ if rg --glob '*.tf' 'geo_redundant_backup_enabled[[:space:]]*=[[:space:]]*true|a
   exit 1
 fi
 
-if rg --glob '*.tf' -i 'central[[:space:]]*india|centralindia' "$azure_root"; then
-  printf 'Candidate region must not be hard-coded as approved.\n' >&2
+approved_region_count="$(rg --glob '*.tf' --count-matches 'approved_locations[[:space:]]*=[[:space:]]*toset\(\["centralindia"\]\)' \
+  "$azure_root/bootstrap" "$azure_root/environments/prod" \
+  | awk -F: '{total += $2} END {print total + 0}')"
+if [[ "$approved_region_count" != "2" ]]; then
+  printf 'Both Azure roots must approve exactly Central India.\n' >&2
   exit 1
 fi
 
@@ -114,8 +117,12 @@ rg --quiet 'postgres_storage_mb[[:space:]]*=[[:space:]]*32768' \
   "$azure_root/environments/prod/locals.tf"
 rg --quiet 'application_worker_count[[:space:]]*=[[:space:]]*1' \
   "$azure_root/environments/prod/locals.tf"
-rg --quiet 'approved_locations[[:space:]]*=[[:space:]]*toset\(\[\]\)' \
-  "$azure_root/environments/prod/locals.tf"
+if [[ "$(rg --glob 'providers.tf' --count-matches 'resource_provider_registrations[[:space:]]*=[[:space:]]*"none"' "$azure_root" | awk -F: '{total += $2} END {print total + 0}')" != "2" ]]; then
+  printf 'Both Azure roots must keep automatic provider registration disabled.\n' >&2
+  exit 1
+fi
+rg --quiet 'depends_on[[:space:]]*=[[:space:]]*\[module\.cost_guardrails\]' \
+  "$azure_root/environments/prod/main.tf"
 rg --quiet 'sku[[:space:]]*=[[:space:]]*"Standard"' \
   "$azure_root/modules/acr/main.tf"
 rg --quiet 'admin_enabled[[:space:]]*=[[:space:]]*false' \

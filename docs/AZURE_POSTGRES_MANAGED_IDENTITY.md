@@ -35,22 +35,47 @@ token; pooled authenticated connections continue normally until recycled.
 ## One-time database identity gate
 
 After Terraform creates the server and VM, but before Alembic or application
-traffic, an approved Microsoft Entra PostgreSQL administrator must:
+traffic, an approved member of the configured Microsoft Entra PostgreSQL
+administrator group runs the reviewed operator command from the repository
+root:
 
-1. Connect to the server's `postgres` database using an Entra access token over
-   TLS from the temporarily approved administration path.
-2. Verify that no unexpected `vm-lingosai-prod` role or `lingosai` database
-   exists.
-3. Map the VM system-assigned identity with PostgreSQL's
-   `pgaadauth_create_principal('vm-lingosai-prod', false, false)` function.
-4. Create the `lingosai` database owned by that role.
-5. Verify the role's Entra mapping, login capability, database ownership, and a
-   token-authenticated connection from the VM.
-6. Close the temporary administration path before public activation.
+```bash
+.github/scripts/azure-postgres-identity-bootstrap.sh \
+  <approved-postgres-server-name> \
+  "<approved-entra-administrator-group-name>" \
+  <vm-managed-identity-object-id> \
+  <approved-current-public-ipv4>
+```
 
-Use the VM identity's exact Entra object rather than a similarly named
-application or user. Stop if the role/database already exists with a different
-owner or mapping; do not drop or rewrite it to make the gate pass.
+The wrapper accepts only non-secret identifiers. It requires the server to be
+`Ready` with exactly the Terraform-authored `allow-vm-only` firewall rule,
+opens one fixed temporary rule for the single operator IPv4, and removes and
+verifies removal of that rule on every exit path. A pre-existing temporary or
+unexpected rule closes the gate.
+
+The Python operation obtains a PostgreSQL access token in memory through
+`AzureCliCredential`; it never accepts or prints the token. It then:
+
+1. Connects to the server's `postgres` database over TLS as the exact
+   configured Entra administrator group.
+2. Verifies the token has `azure_pg_admin`, `CREATEROLE`, and `CREATEDB`.
+3. Refuses an unexpected `vm-lingosai-prod` role, Entra mapping, privilege,
+   `lingosai` database, or database owner.
+4. Calls `pgaadauth_create_principal_with_oid` with role
+   `vm-lingosai-prod`, the exact VM object ID, object type `service`, and
+   both administrator and MFA flags set to `false`.
+5. Creates the empty `lingosai` database owned by that non-admin role.
+6. Re-reads the role flags, one service-principal mapping, object ID,
+   non-admin status, database owner, and empty public schema.
+
+The command may resume only the safe partial state where the exact non-admin
+role and mapping were created but the database was not. It may verify the exact
+role plus still-empty database before Alembic. It refuses all other partial or
+post-migration states.
+
+Use Terraform's `vm_principal_id` output rather than a similarly named
+application or user. Stop if the command refuses; do not drop or rewrite a role,
+database, mapping, object, or firewall rule to make the gate pass.
 
 The same VM identity runs forward-only Alembic migrations and the single
 backend process, so it owns only the `lingosai` database. It receives no server
@@ -65,6 +90,7 @@ Before activation, verify all of the following:
   enabled;
 - the backend environment file contains no database password;
 - a VM-side connection succeeds as `vm-lingosai-prod` with `sslmode=require`;
+- no `temporary-identity-bootstrap` firewall rule remains;
 - an unauthenticated/password-only connection fails;
 - Alembic reaches the expected head and the fresh-admin bootstrap passes;
 - restarting the container obtains a new connection token and readiness
