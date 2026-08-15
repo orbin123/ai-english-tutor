@@ -5,8 +5,10 @@ repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
 bootstrap="$repo_root/.github/scripts/azure-vm-bootstrap.sh"
 verify="$repo_root/.github/scripts/azure-vm-verify.sh"
 deploy="$repo_root/.github/scripts/azure-vm-deploy.sh"
+postgres_bootstrap="$repo_root/.github/scripts/azure-postgres-identity-bootstrap.sh"
+postgres_python="$repo_root/backend/scripts/bootstrap_azure_postgres.py"
 
-for script in "$bootstrap" "$verify" "$deploy"; do
+for script in "$bootstrap" "$verify" "$deploy" "$postgres_bootstrap"; do
   [[ -x "$script" ]] || {
     printf '%s must be executable.\n' "$script" >&2
     exit 1
@@ -57,6 +59,28 @@ if HOST_SCRIPT="$verify" bash -c '
   require_inputs
 ' >/dev/null 2>&1; then
   printf 'Verifier accepted an invalid ACR name.\n' >&2
+  exit 1
+fi
+
+HOST_SCRIPT="$postgres_bootstrap" bash -c '
+  set -- \
+    lingosai-test-postgres \
+    lingosai-postgres-administrators \
+    11111111-2222-3333-4444-555555555555 \
+    8.8.8.8
+  source "$HOST_SCRIPT"
+  require_inputs
+'
+if HOST_SCRIPT="$postgres_bootstrap" bash -c '
+  set -- \
+    lingosai-test-postgres \
+    lingosai-postgres-administrators \
+    11111111-2222-3333-4444-555555555555 \
+    10.0.0.10
+  source "$HOST_SCRIPT"
+  require_inputs
+' >/dev/null 2>&1; then
+  printf 'PostgreSQL bootstrap accepted a private operator address.\n' >&2
   exit 1
 fi
 
@@ -120,8 +144,23 @@ grep -Eq 'az acr login' "$verify"
 grep -Eq -- '--expose-token' "$verify"
 grep -Eq '/dev/tcp/.*/5432' "$verify"
 
+grep -Eq 'FIREWALL_RULE="temporary-identity-bootstrap"' "$postgres_bootstrap"
+grep -Eq 'trap delete_temporary_firewall_rule EXIT' "$postgres_bootstrap"
+grep -Eq 'firewall-rule delete' "$postgres_bootstrap"
+grep -Eq -- '--start-ip-address "\$OPERATOR_IPV4"' "$postgres_bootstrap"
+grep -Eq -- '--end-ip-address "\$OPERATOR_IPV4"' "$postgres_bootstrap"
+grep -Eq 'AzureCliCredential' "$postgres_python"
+grep -Eq 'pgaadauth_create_principal_with_oid' "$postgres_python"
+grep -Eq "'service', false, false" "$postgres_python"
+grep -Eq 'CREATE DATABASE' "$postgres_python"
+grep -Eq 'APPLICATION_ROLE = "vm-lingosai-prod"' "$postgres_python"
+
 forbidden='client[_-]?secret|administrator_password|docker[[:space:]]+run.*--privileged|0\.0\.0\.0/0'
-if grep -Eiq "$forbidden" "$bootstrap" "$verify"; then
+if grep -Eiq "$forbidden" \
+  "$bootstrap" \
+  "$verify" \
+  "$postgres_bootstrap" \
+  "$postgres_python"; then
   printf 'Forbidden host bootstrap pattern detected.\n' >&2
   exit 1
 fi
