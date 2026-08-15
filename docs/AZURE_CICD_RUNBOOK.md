@@ -85,10 +85,11 @@ value other than the lowercase string `true` skips every Azure cloud job. The
 deploy workflow still runs its local backend test job on matching pushes. Never
 replace OIDC with a client secret.
 
-## Human-owned VM host contract
+## VM host contract
 
-Before any workflow is approved, the single VM must be configured and tested by
-a separately reviewed bootstrap operation:
+Before any workflow is approved, configure and verify the single VM with the
+reviewed, idempotent operations in
+[`AZURE_VM_HOST_BOOTSTRAP.md`](./AZURE_VM_HOST_BOOTSTRAP.md):
 
 - the Azure VM agent, Azure CLI, Docker, and `curl` are installed;
 - the system-assigned VM identity can pull from only the approved ACR;
@@ -100,12 +101,20 @@ a separately reviewed bootstrap operation:
   one worker, host networking, a 768 MiB memory limit, and bounded local logs;
 - the application managed-identity database login, Key Vault access, Blob
   access, CORS, OAuth/payment callbacks, DNS, and media privacy have passed their
-  separate gates.
+  separate gates. The database gate and credential-free runtime URL are defined
+  in [`AZURE_POSTGRES_MANAGED_IDENTITY.md`](./AZURE_POSTGRES_MANAGED_IDENTITY.md).
 - for the initial fresh database only, the owner-approved administrator is
   created and verified through the fail-closed process in
   [`AZURE_FRESH_START_ADMIN_BOOTSTRAP.md`](./AZURE_FRESH_START_ADMIN_BOOTSTRAP.md)
   before public application traffic is allowed; this is a separately approved
   one-time operation, not an automatic deployment step.
+
+The bootstrap accepts only the API hostname, Key Vault name, and secret name.
+It reads the environment directly with the VM identity, validates the Azure
+production invariants, writes it as `root:root` mode `0600`, and leaves the
+maintenance marker in place. The verifier additionally proves Key Vault/ACR
+identity access and PostgreSQL network reachability without printing a secret
+or token. Neither operation deploys the backend or removes maintenance mode.
 
 The workflows never write the environment file and never print it. VM Run
 Command output must still be treated as operationally sensitive and retained

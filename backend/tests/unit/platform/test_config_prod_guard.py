@@ -42,11 +42,27 @@ _SAFE_PROD = dict(
     **_REQUIRED,
 )
 
+_AZURE_MANAGED_IDENTITY_PROD = {
+    **_SAFE_PROD,
+    "DATABASE_AUTH_MODE": "azure-managed-identity",
+    "database_url": (
+        "postgresql://vm-lingosai-prod@pg-lingosai-prod.postgres.database."
+        "azure.com:5432/lingosai?sslmode=require"
+    ),
+}
+
 
 def test_safe_production_config_boots() -> None:
     settings = Settings(**_SAFE_PROD)
     assert settings.environment == "production"
     assert settings.cors_origins_list == ["https://app.example.com"]
+
+
+def test_safe_managed_identity_database_config_boots_without_password() -> None:
+    settings = Settings(**_AZURE_MANAGED_IDENTITY_PROD)
+
+    assert settings.DATABASE_AUTH_MODE == "azure-managed-identity"
+    assert "://vm-lingosai-prod@" in settings.database_url
 
 
 @pytest.mark.parametrize(
@@ -151,6 +167,53 @@ def test_production_rejects_database_pool_above_five_connections(
 def test_production_accepts_database_pool_at_five_connections() -> None:
     settings = Settings(**{**_SAFE_PROD, "DB_POOL_SIZE": 4, "DB_MAX_OVERFLOW": 1})
     assert settings.DB_POOL_SIZE + settings.DB_MAX_OVERFLOW == 5
+
+
+@pytest.mark.parametrize(
+    "database_url",
+    [
+        (
+            "postgresql://vm-lingosai-prod:secret@pg-lingosai-prod.postgres."
+            "database.azure.com:5432/lingosai?sslmode=require"
+        ),
+        (
+            "postgresql://other-user@pg-lingosai-prod.postgres.database."
+            "azure.com:5432/lingosai?sslmode=require"
+        ),
+        "postgresql://vm-lingosai-prod@db.example.com:5432/lingosai?sslmode=require",
+        (
+            "postgresql://vm-lingosai-prod@pg-lingosai-prod.postgres.database."
+            "azure.com:6432/lingosai?sslmode=require"
+        ),
+        (
+            "postgresql://vm-lingosai-prod@pg-lingosai-prod.postgres.database."
+            "azure.com:5432/postgres?sslmode=require"
+        ),
+        (
+            "postgresql://vm-lingosai-prod@pg-lingosai-prod.postgres.database."
+            "azure.com:5432/lingosai?sslmode=prefer"
+        ),
+        (
+            "postgresql://vm-lingosai-prod@pg-lingosai-prod.postgres.database."
+            "azure.com:5432/lingosai?sslmode=require&application_name=lingosai"
+        ),
+    ],
+)
+def test_production_rejects_unsafe_managed_identity_database_url(
+    database_url: str,
+) -> None:
+    with pytest.raises(ValidationError, match="managed-identity DATABASE_URL"):
+        Settings(**{**_AZURE_MANAGED_IDENTITY_PROD, "database_url": database_url})
+
+
+def test_production_rejects_password_mode_for_azure_postgres() -> None:
+    with pytest.raises(ValidationError, match="Azure PostgreSQL requires"):
+        Settings(
+            **{
+                **_AZURE_MANAGED_IDENTITY_PROD,
+                "DATABASE_AUTH_MODE": "password",
+            }
+        )
 
 
 def test_production_rejects_multiple_workers_with_memory_limiter() -> None:
