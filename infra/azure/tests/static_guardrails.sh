@@ -116,6 +116,12 @@ rg --quiet 'application_worker_count[[:space:]]*=[[:space:]]*1' \
   "$azure_root/environments/prod/locals.tf"
 rg --quiet 'approved_locations[[:space:]]*=[[:space:]]*toset\(\[\]\)' \
   "$azure_root/environments/prod/locals.tf"
+if [[ "$(rg --glob 'providers.tf' --count-matches 'resource_provider_registrations[[:space:]]*=[[:space:]]*"none"' "$azure_root" | awk -F: '{total += $2} END {print total + 0}')" != "2" ]]; then
+  printf 'Both Azure roots must keep automatic provider registration disabled.\n' >&2
+  exit 1
+fi
+rg --quiet 'depends_on[[:space:]]*=[[:space:]]*\[module\.cost_guardrails\]' \
+  "$azure_root/environments/prod/main.tf"
 rg --quiet 'sku[[:space:]]*=[[:space:]]*"Standard"' \
   "$azure_root/modules/acr/main.tf"
 rg --quiet 'admin_enabled[[:space:]]*=[[:space:]]*false' \

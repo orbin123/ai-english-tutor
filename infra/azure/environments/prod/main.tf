@@ -17,6 +17,9 @@ resource "azurerm_resource_group" "production" {
 module "network" {
   source = "../../modules/network"
 
+  # Cost alerts and deny policies must exist before any product resource.
+  depends_on = [module.cost_guardrails]
+
   resource_group_name   = azurerm_resource_group.production.name
   location              = azurerm_resource_group.production.location
   admin_ssh_source_cidr = var.admin_ssh_source_cidr
