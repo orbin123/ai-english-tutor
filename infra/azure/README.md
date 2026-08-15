@@ -29,6 +29,9 @@ India must not be added merely because it is the current candidate.
 A real plan also requires explicit approval for the subscription, tenant,
 Reader identity, and remote-state discovery. This PR performs no Azure login,
 CLI command, subscription inspection, provider registration, or backend access.
+Both Terraform roots disable automatic resource-provider registration so even
+a real plan cannot silently mutate subscription registration state. Register
+only the exact reviewed providers in a separate approved production gate.
 
 ## Safe local validation
 
@@ -77,6 +80,11 @@ approved out-of-band backend configuration after bootstrap.
 - one action group, one resource-group budget, and enforced allowed-location and
   allowed-resource-type policies;
 - Vercel remains the Phase 1 frontend.
+
+The production network, and therefore every product resource downstream of it,
+depends on the cost-guardrail module. The budget, action group, and deny policies
+must be created successfully before Terraform can begin provisioning the VM,
+database, storage, registry, or vault.
 
 PostgreSQL is defined with Entra-only authentication so Terraform never accepts
 or stores a database password. Application managed-identity database login and
