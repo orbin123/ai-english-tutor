@@ -41,12 +41,12 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v7
-      - name: Validate Azure host contract
-        working-directory: .
-        run: bash infra/azure/tests/host_contract_guardrails.sh
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+      - name: Validate Azure host contract
+        working-directory: .
+        run: bash infra/azure/tests/host_contract_guardrails.sh
       - name: Install locked dependencies
         run: uv sync --frozen
       - name: Lint and format check
