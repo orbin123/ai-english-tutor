@@ -62,3 +62,4 @@ from app.modules.feedback_memory.models import FeedbackMemoryLog  # noqa: F401
 from app.modules.reviews.models import AppReview  # noqa: F401
 from app.modules.feedback.models import FeedbackPromptLog  # noqa: F401
 from app.modules.blog.models import BlogPost  # noqa: F401
+from app.modules.quotas.models import UsageQuotaCounter  # noqa: F401

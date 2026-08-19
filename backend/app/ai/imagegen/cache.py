@@ -76,6 +76,13 @@ class CachedImageGenService:
         style: str | None = None,
     ) -> ImageResult:
         """Generate one image and return its public URL + dimensions."""
+        from app.core.config import settings
+
+        if not settings.ENABLE_IMAGE_GENERATION:
+            raise ImageGenValidationError(
+                "Image generation is disabled on this deployment."
+            )
+
         cleaned_prompt = prompt.strip()
         if not cleaned_prompt:
             raise ImageGenValidationError("prompt must be non-empty")
@@ -118,6 +125,10 @@ class CachedImageGenService:
             len(cleaned_prompt),
             aspect_ratio,
         )
+        from app.modules.quotas.constants import QuotaMetric
+        from app.modules.quotas.service import consume_quota
+
+        consume_quota(QuotaMetric.IMAGE_GENS)
         provider_result = await self._provider.generate(
             prompt=cleaned_prompt,
             aspect_ratio=aspect_ratio,

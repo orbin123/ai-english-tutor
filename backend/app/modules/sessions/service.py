@@ -34,6 +34,8 @@ from app.ai.llm.eval_context import (
 from app.ai.sessions.llm_evaluator import is_llm_backed_evaluation
 from app.core.config import settings
 from app.core.sentry import capture_to_sentry
+from app.modules.quotas.constants import QuotaMetric
+from app.modules.quotas.service import QuotaService
 from app.modules.sessions.contracts.agent_inputs import (
     EvaluatorAgentInput,
     FeedbackAgentInput,
@@ -734,7 +736,11 @@ class SessionService:
         # never changes the score. No-op when the flag is off or RAG is
         # unavailable.
         learner_history: str | None = None
-        if settings.RAG_PER_ACTIVITY_FEEDBACK and self._rag_service is not None:
+        if (
+            settings.ENABLE_RAG_FEEDBACK
+            and settings.RAG_PER_ACTIVITY_FEEDBACK
+            and self._rag_service is not None
+        ):
             try:
                 learner_history = await asyncio.wait_for(
                     self._rag_service.retrieve_context_for_activity(
@@ -1125,6 +1131,7 @@ class SessionService:
         # instead of racing a hard inline timeout. See ensure_mentor_note.
         session.status = SessionStatus.COMPLETED
         session.completed_at = now
+        QuotaService(self.db).consume(QuotaMetric.COMPLETED_LESSONS)
         self._mark_course_complete_if_final(session=session, now=now)
 
         try:
@@ -1150,7 +1157,7 @@ class SessionService:
 
         # Background (own DB session): index per-activity vectors only. The note
         # and the day-level summary vector are handled by ensure_mentor_note.
-        if self._rag_service is not None:
+        if self._rag_service is not None and settings.ENABLE_RAG_FEEDBACK:
             self._schedule_post_completion_rag(
                 session_id=session.session_id,
                 user_id=session.user_id,
@@ -1178,7 +1185,7 @@ class SessionService:
 
             attempts = self.attempts_repo.list_for_session(session.id)
 
-            if self._rag_service is not None:
+            if self._rag_service is not None and settings.ENABLE_RAG_FEEDBACK:
                 for attempt in attempts:
                     if attempt.status is not AttemptStatus.EVALUATED:
                         continue
@@ -1958,7 +1965,11 @@ class SessionService:
 
         Returns None on any failure — scorecard is still returned.
         """
-        if self._rag_service is None or self._mentor_generator is None:
+        if (
+            not settings.ENABLE_MENTOR_SAMPLING
+            or self._rag_service is None
+            or self._mentor_generator is None
+        ):
             return None
 
         # Stamp a trace so the mentor-note LLM call is recorded with the learner
@@ -1973,13 +1984,15 @@ class SessionService:
                 if attempt.feedback is not None:
                     today_mistakes.extend(attempt.feedback.mistakes or [])
 
-            # Retrieve RAG context
-            rag_context = await self._rag_service.retrieve_context_for_feedback(
-                user_id=session.user_id,
-                current_mistakes=today_mistakes,
-                current_day_id=session.day_id,
-                current_session_id=session.id,
-            )
+            # Retrieve RAG context when enabled for the zero-cost edition.
+            rag_context: dict | None = None
+            if settings.ENABLE_RAG_FEEDBACK:
+                rag_context = await self._rag_service.retrieve_context_for_feedback(
+                    user_id=session.user_id,
+                    current_mistakes=today_mistakes,
+                    current_day_id=session.day_id,
+                    current_session_id=session.id,
+                )
 
             # Collect points earned from activities_breakdown
             points_earned: dict[str, int] = {}
@@ -1991,7 +2004,7 @@ class SessionService:
             mentor_note = await self._mentor_generator.generate(
                 today_activities=activities_breakdown,
                 today_mistakes=today_mistakes,
-                rag_context=rag_context,
+                rag_context=dict(rag_context or {}),
                 points_earned=points_earned,
             )
 
@@ -2003,6 +2016,7 @@ class SessionService:
                 mentor_note
                 and scorecard_id is not None
                 and settings.AI_EVAL_ENABLED
+                and settings.ENABLE_MENTOR_SAMPLING
                 and random.random() < settings.AI_EVAL_MENTOR_SAMPLE_RATE
             ):
                 self._schedule_mentor_note_eval(

@@ -1,4 +1,4 @@
-"""Shared storage contract for local, S3, and Azure Blob backends.
+"""Shared storage contract for local and Azure Blob backends.
 
 The cloud adapters use in-memory SDK fakes. No cloud account, credential, or
 emulator is required. Public URLs are anonymous/direct (no SAS or application
@@ -19,63 +19,11 @@ from app.ai.storage import (
     BlobVisibility,
     IBlobStorage,
     LocalBlobStorage,
-    S3BlobStorage,
 )
 
 
 class _MissingObject(RuntimeError):
     status_code = 404
-
-
-class _Body:
-    def __init__(self, data: bytes) -> None:
-        self._data = data
-
-    def read(self) -> bytes:
-        return self._data
-
-
-class _FakeS3Client:
-    def __init__(self) -> None:
-        self.store: dict[str, bytes] = {}
-        self.content_types: dict[str, str] = {}
-        self.addressed: list[str] = []
-        self.list_calls = 0
-
-    def put_object(self, *, Bucket, Key, Body, ContentType):  # noqa: N803
-        self.addressed.append(Key)
-        self.store[Key] = Body
-        self.content_types[Key] = ContentType
-
-    def get_object(self, *, Bucket, Key):  # noqa: N803
-        self.addressed.append(Key)
-        if Key not in self.store:
-            exc = _MissingObject("not found")
-            exc.response = {  # type: ignore[attr-defined]
-                "Error": {"Code": "NoSuchKey"},
-                "ResponseMetadata": {"HTTPStatusCode": 404},
-            }
-            raise exc
-        return {"Body": _Body(self.store[Key])}
-
-    def head_object(self, *, Bucket, Key):  # noqa: N803
-        self.addressed.append(Key)
-        if Key not in self.store:
-            exc = _MissingObject("not found")
-            exc.response = {  # type: ignore[attr-defined]
-                "Error": {"Code": "NoSuchKey"},
-                "ResponseMetadata": {"HTTPStatusCode": 404},
-            }
-            raise exc
-        return {}
-
-    def delete_object(self, *, Bucket, Key):  # noqa: N803
-        self.addressed.append(Key)
-        self.store.pop(Key, None)
-
-    def list_objects_v2(self, **kwargs):
-        self.list_calls += 1
-        raise AssertionError("request paths must not list S3 objects")
 
 
 class _AzureDownload:
@@ -140,7 +88,7 @@ class _StorageCase:
 @pytest.fixture(
     params=[
         (backend, visibility)
-        for backend in ("local", "s3", "azure")
+        for backend in ("local", "azure")
         for visibility in BlobVisibility
     ],
     ids=lambda value: f"{value[0]}-{value[1].value}",
@@ -167,30 +115,6 @@ def storage_case(request, tmp_path) -> _StorageCase:
             ),
             object_name=object_name,
             local_path=root / key[:2] / key,
-        )
-
-    if backend == "s3":
-        client = _FakeS3Client()
-        storage = S3BlobStorage(
-            bucket=f"{visibility.value}-media",
-            key_prefix="contract",
-            public_url_base=(
-                "https://media.example.test"
-                if visibility is BlobVisibility.PUBLIC
-                else None
-            ),
-            internal_url_prefix=(
-                route_prefix if visibility is not BlobVisibility.PUBLIC else None
-            ),
-            visibility=visibility,
-            client=client,
-        )
-        return _StorageCase(
-            backend=backend,
-            visibility=visibility,
-            storage=storage,
-            object_name=object_name,
-            provider=client,
         )
 
     client = _FakeAzureContainerClient()

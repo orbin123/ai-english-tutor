@@ -20,6 +20,7 @@ os.environ.setdefault("STRICT_CONTRACTS", "true")
 # user id never trip a limit and the limiter never dials Redis. Dedicated
 # tests opt back in via monkeypatch + reset_limiter_for_tests().
 os.environ.setdefault("AI_RATE_LIMIT_ENABLED", "false")
+os.environ.setdefault("QUOTA_COUNTERS_ENABLED", "false")
 
 
 # Shared fixtures live in dedicated modules and are registered as plugins so

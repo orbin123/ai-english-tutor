@@ -145,7 +145,7 @@ async def stream_round(
         )
         return
 
-    if not settings.DEEPGRAM_API_KEY:
+    if not settings.ENABLE_DEEPGRAM or not settings.DEEPGRAM_API_KEY:
         await _send_error(
             websocket,
             code="streaming_not_configured",

@@ -9,7 +9,7 @@ Public URL is served by FastAPI's StaticFiles mount (set up in
 That's intentional for MVP: anyone with the URL can fetch the audio,
 which is fine because the URL itself is non-guessable (hash-based).
 
-Swap to S3 / R2: write `S3BlobStorage` implementing the same interface,
+Swap to Azure Blob: use `AzureBlobStorage` implementing the same interface,
 flip a factory in `__init__.py`. Callers don't change.
 """
 
@@ -34,7 +34,7 @@ class LocalBlobStorage:
 
     Why a class (not module-level functions)? Two reasons:
       1. Tests can construct one with a tmpdir root, no monkey-patching.
-      2. A future S3BlobStorage will need state (bucket name, region,
+      2. Cloud blob storage needs state (account URL, container,
          credentials). Keeping the contract symmetric now makes the
          swap one line.
     """

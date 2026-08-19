@@ -184,6 +184,18 @@ class CachedSTTService:
             with_timestamps=with_timestamps,
         )
 
+        duration_seconds = result.get("duration_seconds")
+        if duration_seconds is not None:
+            from math import ceil
+
+            from app.modules.quotas.constants import QuotaMetric
+            from app.modules.quotas.service import consume_quota
+
+            consume_quota(
+                QuotaMetric.SPEECH_MINUTES,
+                amount=max(1, int(ceil(float(duration_seconds) / 60.0))),
+            )
+
         # ---- 3. Persist for next time. Failures here are NOT fatal —
         # we already have a valid result; failing the request because
         # the cache write hiccupped would be silly.

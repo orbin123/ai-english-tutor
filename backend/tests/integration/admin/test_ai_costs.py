@@ -21,7 +21,11 @@ from app.modules.admin.models import AIRequestLog
 from app.modules.admin.service import AdminService
 from app.modules.auth.models import User
 
-NOW = datetime.now(timezone.utc)
+# Anchor generated rows at noon yesterday so the 1-hour and 2-hour samples
+# always share a UTC date, including when the suite runs around midnight.
+NOW = datetime.now(timezone.utc).replace(
+    hour=12, minute=0, second=0, microsecond=0
+) - timedelta(days=1)
 
 
 @pytest.fixture()
@@ -112,10 +116,10 @@ def test_ai_costs_daily_rolls_up_per_day(db):
     assert len(report.daily) == 2
     # Oldest first.
     assert report.daily[0].date < report.daily[1].date
-    # Today's bucket: 0.15 (mini in) + 2.50 (4o in) = 2.65, 2 requests.
-    today = report.daily[-1]
-    assert today.requests == 2
-    assert today.cost_usd == pytest.approx(2.65)
+    # Latest bucket: 0.15 (mini in) + 2.50 (4o in) = 2.65, 2 requests.
+    latest = report.daily[-1]
+    assert latest.requests == 2
+    assert latest.cost_usd == pytest.approx(2.65)
 
 
 def test_ai_costs_window_excludes_old_rows(db):
