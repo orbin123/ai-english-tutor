@@ -77,3 +77,8 @@ def log_usage(record: UsageRecord) -> None:
     without flipping debug. If it gets noisy, we'll downgrade later.
     """
     logger.info("llm_usage %s", record.as_log_dict())
+    if record.total_tokens > 0:
+        from app.modules.quotas.constants import QuotaMetric
+        from app.modules.quotas.service import consume_quota
+
+        consume_quota(QuotaMetric.LLM_TOKENS, amount=record.total_tokens)

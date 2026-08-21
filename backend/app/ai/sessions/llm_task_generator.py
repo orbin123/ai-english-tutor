@@ -779,6 +779,14 @@ class LLMTaskGenerator:
 
     @staticmethod
     async def _attach_image(*, content: dict) -> dict:
+        from app.core.config import settings
+
+        if not settings.ENABLE_IMAGE_GENERATION:
+            fallback = dict(content)
+            fallback["image_url"] = None
+            fallback["image_error"] = "Image generation is disabled on this deployment."
+            return fallback
+
         image_alt = str(content.get("image_alt") or "").strip()
         if not image_alt:
             raise ValueError(

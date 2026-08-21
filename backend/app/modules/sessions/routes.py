@@ -49,6 +49,7 @@ from app.modules.curriculum.repository import (
     CurriculumWeekRepository,
     UserEnrollmentRepository,
 )
+from app.modules.quotas.exceptions import QuotaExceeded
 from app.modules.preferences.models import UserCoursePreference
 from app.modules.preferences.service import PreferenceService
 from app.ai.sessions.exceptions import TaskGenerationFailed
@@ -831,6 +832,11 @@ async def complete_session(
                 session_id,
             )
         return _serialize_scorecard(session_id, scorecard, db=db)
+    except QuotaExceeded as exc:
+        raise HTTPException(
+            status_code=429,
+            detail="Monthly free capacity reached. Please try again later.",
+        ) from exc
     except SessionNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except SessionAbandoned as exc:

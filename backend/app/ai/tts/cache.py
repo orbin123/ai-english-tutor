@@ -162,6 +162,10 @@ class CachedTTSService:
 
         # ---- 2. Cache miss — synthesize then store
         logger.info("tts_cache_miss key=%s chars=%d", cache_key, len(text))
+        from app.modules.quotas.constants import QuotaMetric
+        from app.modules.quotas.service import consume_quota
+
+        consume_quota(QuotaMetric.TTS_CHARS, amount=len(text))
         provider_result = await self._provider.synthesize(
             text=text,
             voice_id=effective_voice,

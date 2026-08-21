@@ -192,6 +192,26 @@ class Settings(BaseSettings):
     # (connection-level only — audio frames inside a stream are never throttled).
     WS_A2Z_STREAMS_PER_MINUTE: int = 10
 
+    # Persistent usage quotas (Azure zero-cost edition). Counters live in
+    # PostgreSQL so deploys do not reset spend tracking.
+    QUOTA_COUNTERS_ENABLED: bool = True
+    QUOTA_DAILY_COMPLETED_LESSONS: int = Field(default=50, ge=0)
+    QUOTA_MONTHLY_BLOB_WRITES: int = Field(default=8000, ge=0)
+    QUOTA_MONTHLY_SPEECH_MINUTES: int = Field(default=240, ge=0)
+    QUOTA_MONTHLY_TTS_CHARS: int = Field(default=400000, ge=0)
+    QUOTA_MONTHLY_LLM_TOKENS: int = Field(default=5000000, ge=0)
+    QUOTA_MONTHLY_IMAGE_GENS: int = Field(default=0, ge=0)
+
+    # Zero-cost feature switches — disable costly paths without code changes.
+    ENABLE_IMAGE_GENERATION: bool = True
+    ENABLE_DEEPGRAM: bool = True
+    ENABLE_RAG_FEEDBACK: bool = False
+    ENABLE_MENTOR_SAMPLING: bool = True
+
+    # Local media retention for cleanup_media_cache.py (days).
+    LEARNER_RECORDING_RETENTION_DAYS: int = Field(default=7, ge=1)
+    TTS_CACHE_RETENTION_DAYS: int = Field(default=30, ge=1)
+
     # AI quality (LLM-as-judge, Part B Phase 2) — a stronger model scores live
     # feedback for quality and writes one ai_evaluations row, joined to the
     # operational log by trace_id. Online sampling only (cost control); the
@@ -274,19 +294,7 @@ class Settings(BaseSettings):
     # frozen AWS recovery path, or managed-identity Azure Blob storage for the
     # zero-cost topology. Selected by `build_blob_storage()` in
     # app/ai/storage/__init__.py; callers never change.
-    STORAGE_BACKEND: Literal["local", "s3", "azure"] = "local"
-    # S3 bucket + region for PUBLIC generated media (required when
-    # STORAGE_BACKEND=s3). Credentials come from the ambient AWS env (ECS task
-    # role in prod).
-    MEDIA_S3_BUCKET: str = ""
-    MEDIA_S3_REGION: str = "us-east-1"
-    # Separate PRIVATE bucket for learner audio — never fronted by CloudFront,
-    # only reachable through the owner-checked /responses/audio route. Falls
-    # back to MEDIA_S3_BUCKET when empty (single-bucket setups).
-    MEDIA_PRIVATE_S3_BUCKET: str = ""
-    # CloudFront base URL for PUBLIC media (TTS audio, images, blog covers),
-    # e.g. "https://media.lingosai.com". Private learner audio never uses this.
-    MEDIA_CDN_URL: str = ""
+    STORAGE_BACKEND: Literal["local", "azure"] = "local"
 
     # Azure Blob adapter. Public media is intentionally separated from private
     # learner/internal data at the account boundary. Runtime authentication uses
@@ -428,11 +436,6 @@ class Settings(BaseSettings):
 
         if self.STORAGE_BACKEND == "local":
             violations.append("STORAGE_BACKEND=local is not supported in production")
-        elif self.STORAGE_BACKEND == "s3":
-            if not self.MEDIA_S3_BUCKET:
-                violations.append("MEDIA_S3_BUCKET must be set when STORAGE_BACKEND=s3")
-            if not self.MEDIA_CDN_URL:
-                violations.append("MEDIA_CDN_URL must be set when STORAGE_BACKEND=s3")
         elif self.STORAGE_BACKEND == "azure":
             violations.extend(self._azure_blob_production_violations())
 

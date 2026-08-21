@@ -251,21 +251,6 @@ def test_production_rejects_unsupported_storage_backend(storage_backend: str) ->
         Settings(**{**_SAFE_PROD, "STORAGE_BACKEND": storage_backend})
 
 
-def test_production_preserves_s3_recovery_configuration() -> None:
-    settings = Settings(
-        **{
-            **_SAFE_PROD,
-            "STORAGE_BACKEND": "s3",
-            "MEDIA_S3_BUCKET": "recovery-media",
-            "MEDIA_CDN_URL": "https://media.example.com",
-            "AI_RATE_LIMIT_BACKEND": "redis",
-            "redis_url": "redis://redis.example.com:6379/0",
-            "WEB_CONCURRENCY": 2,
-        }
-    )
-    assert settings.STORAGE_BACKEND == "s3"
-
-
 @pytest.mark.parametrize(
     "override",
     [

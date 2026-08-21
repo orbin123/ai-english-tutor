@@ -14,6 +14,7 @@ from app.modules.sessions.evaluator import StubEvaluator
 from app.modules.sessions.feedback_generator import StubFeedbackGenerator
 from app.modules.sessions.models import AttemptStatus, SessionStatus
 from app.modules.sessions.service import SessionService
+from app.core.config import settings
 from app.scoring import CourseLength
 
 from tests.integration.sessions._lifecycle_support import _user_id
@@ -31,6 +32,11 @@ class TestRagResilience:
       awaited in-band by the chat WS / REST completion paths.
     - The background worker only re-indexes per-activity vectors.
     """
+
+    @pytest.fixture(autouse=True)
+    def _enable_rag_for_rag_contract_tests(self, monkeypatch):
+        """Exercise the RAG contract independently of its production flag."""
+        monkeypatch.setattr(settings, "ENABLE_RAG_FEEDBACK", True)
 
     async def _start(self, db, tasks_per_day=2, score=8.0):
         service = SessionService(

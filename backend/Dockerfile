@@ -66,8 +66,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root runtime user (no shell, no home). Owns /app so the app can write its
-# media _cache dirs under app/ai/** when running locally without S3 (Phase 3
-# replaces local disk with S3BlobStorage).
+# media _cache dirs under app/ai/** when running locally without Azure Blob.
 RUN groupadd --system --gid 10001 appgroup \
     && useradd --system --uid 10001 --gid appgroup --no-create-home appuser
 
