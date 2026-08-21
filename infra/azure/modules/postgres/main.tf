@@ -27,6 +27,10 @@ resource "azurerm_postgresql_flexible_server" "production" {
 
   lifecycle {
     prevent_destroy = true
+    # Azure selects an available zone when none is requested. Preserve that
+    # service-assigned placement on later plans instead of trying to clear or
+    # relocate the production server.
+    ignore_changes = [zone]
 
     precondition {
       condition = (
