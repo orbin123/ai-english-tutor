@@ -127,6 +127,11 @@ rg --quiet 'sku[[:space:]]*=[[:space:]]*"Standard"' \
   "$azure_root/modules/acr/main.tf"
 rg --quiet 'admin_enabled[[:space:]]*=[[:space:]]*false' \
   "$azure_root/modules/acr/main.tf"
+if rg --quiet 'export_policy_enabled[[:space:]]*=[[:space:]]*false' \
+  "$azure_root/modules/acr/main.tf"; then
+  printf 'Disabling ACR exports would require the forbidden Premium SKU.\n' >&2
+  exit 1
+fi
 rg --quiet 'sku_name[[:space:]]*=[[:space:]]*"standard"' \
   "$azure_root/modules/key-vault/main.tf"
 rg --quiet 'rbac_authorization_enabled[[:space:]]*=[[:space:]]*true' \

@@ -10,7 +10,10 @@ resource "azurerm_container_registry" "production" {
   zone_redundancy_enabled       = false
   anonymous_pull_enabled        = false
   data_endpoint_enabled         = false
-  export_policy_enabled         = false
+
+  # Azure permits disabling exports only on Premium ACR. Leave the Standard
+  # registry's export policy at its service default to preserve the reviewed
+  # zero-cost SKU; image publishing and pulling remain controlled by RBAC.
 
   tags = var.tags
 }
