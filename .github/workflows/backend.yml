@@ -18,6 +18,9 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  UV_VERSION: "0.11.32"
+
 defaults:
   run:
     working-directory: backend
@@ -29,6 +32,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
       - run: uv sync
       - name: Ruff lint
@@ -46,6 +50,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
       - run: uv sync
       - name: Mypy
@@ -57,6 +62,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
       - run: uv sync
       - name: Unit tests
@@ -68,6 +74,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
       - run: uv sync
       - name: Integration tests
@@ -107,6 +114,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
       - run: uv sync
       - name: Alembic upgrade head on empty Postgres
@@ -126,6 +134,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
         with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
       - run: uv sync
       - name: Full suite + coverage gate
