@@ -98,6 +98,8 @@ if rg --glob '*.tf' 'geo_redundant_backup_enabled[[:space:]]*=[[:space:]]*true|a
   printf 'PostgreSQL redundancy or autogrow left the approved disabled state.\n' >&2
   exit 1
 fi
+rg --quiet 'ignore_changes[[:space:]]*=[[:space:]]*\[zone\]' \
+  "$azure_root/modules/postgres/main.tf"
 
 approved_region_count="$(rg --glob '*.tf' --count-matches 'approved_locations[[:space:]]*=[[:space:]]*toset\(\["centralindia"\]\)' \
   "$azure_root/bootstrap" "$azure_root/environments/prod" \
