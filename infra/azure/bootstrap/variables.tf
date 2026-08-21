@@ -21,7 +21,7 @@ variable "tenant_id" {
 }
 
 variable "location" {
-  description = "Exact owner-approved Azure region. No region is approved yet."
+  description = "Exact owner-approved Azure region; currently Central India."
   type        = string
   nullable    = false
 }
