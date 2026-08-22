@@ -119,6 +119,37 @@ def test_choose_action_rejects_wrong_database_owner() -> None:
         choose_action(_expected_role(), "other-owner", VM_OBJECT_ID)
 
 
+def test_read_role_state_aliases_azure_principal_columns_positionally() -> None:
+    class _Result:
+        def __init__(self, *, row: tuple[object, ...] | None = None) -> None:
+            self.row = row
+
+        def fetchone(self) -> tuple[object, ...] | None:
+            return self.row
+
+        def fetchall(self) -> list[tuple[object, ...]]:
+            return [("service", VM_OBJECT_ID, 0)]
+
+    class _Connection:
+        def execute(
+            self,
+            query: str,
+            params: tuple[str, ...],
+        ) -> _Result:
+            if "FROM pg_catalog.pg_roles" in query:
+                return _Result(row=(True, False, False, False, False, False))
+
+            assert "AS principals(" in query
+            assert "role_name," in query
+            assert "WHERE role_name = %s" in query
+            assert params == (APPLICATION_ROLE,)
+            return _Result()
+
+    role = bootstrap_module._read_role_state(_Connection())  # type: ignore[arg-type]
+
+    assert role == _expected_role()
+
+
 def test_main_redacts_unexpected_connection_error(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

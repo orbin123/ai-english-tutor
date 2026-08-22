@@ -129,9 +129,16 @@ def _read_role_state(connection: Connection[tuple[object, ...]]) -> RoleState | 
     ).fetchone()
     mapping_rows = connection.execute(
         """
-        SELECT principaltype::text, objectid::text, isadmin::integer
-        FROM pg_catalog.pgaadauth_list_principals(false)
-        WHERE rolename = %s
+        SELECT principal_type::text, object_id::text, is_admin::integer
+        FROM pg_catalog.pgaadauth_list_principals(false) AS principals(
+            role_name,
+            principal_type,
+            object_id,
+            tenant_id,
+            is_mfa,
+            is_admin
+        )
+        WHERE role_name = %s
         """,
         (APPLICATION_ROLE,),
     ).fetchall()
