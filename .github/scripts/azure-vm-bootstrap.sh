@@ -74,6 +74,10 @@ install_caddy() {
   curl --fail --silent --show-error --location \
     https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt \
     --output "$CADDY_SOURCE"
+  # The script-wide umask is intentionally restrictive for secrets, but APT
+  # reads repository metadata as an unprivileged user. These two public files
+  # must therefore be readable before the signed repository is refreshed.
+  chmod 0644 "$CADDY_KEYRING" "$CADDY_SOURCE"
   apt-get update
 
   if ! command -v caddy >/dev/null 2>&1; then

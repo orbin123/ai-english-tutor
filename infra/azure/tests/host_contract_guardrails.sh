@@ -138,6 +138,8 @@ grep -Fq "$caddy_source_removal" "$bootstrap"
 [[ "$(grep -nF "$caddy_source_removal" "$bootstrap" | head -n1 | cut -d: -f1)" -lt \
   "$(grep -nF 'apt-get update' "$bootstrap" | head -n1 | cut -d: -f1)" ]]
 [[ "$(grep -cF 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' "$bootstrap")" == "1" ]]
+caddy_public_file_mode="chmod 0644 \"\$CADDY_KEYRING\" \"\$CADDY_SOURCE\""
+grep -Fq "$caddy_public_file_mode" "$bootstrap"
 grep -Eq 'reverse_proxy 127\.0\.0\.1:8000' "$bootstrap"
 grep -Eq '@maintenance file /maintenance' "$bootstrap"
 grep -Eq 'SystemMaxUse=100M' "$bootstrap"
