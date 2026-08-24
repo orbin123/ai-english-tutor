@@ -51,6 +51,12 @@ require_inputs() {
 
 install_base_packages() {
   export DEBIAN_FRONTEND=noninteractive
+
+  # A failed earlier bootstrap can leave the Caddy source configured without
+  # its signing key. That makes the very first apt update fail before
+  # install_caddy has a chance to repair the repository. Temporarily remove
+  # only this reviewed third-party source; install_caddy recreates it below.
+  rm -f -- "$CADDY_SOURCE"
   apt-get update
   apt-get install --yes \
     ca-certificates \
@@ -62,14 +68,15 @@ install_base_packages() {
 }
 
 install_caddy() {
+  curl --fail --silent --show-error --location \
+    https://dl.cloudsmith.io/public/caddy/stable/gpg.key \
+    | gpg --dearmor --yes --output "$CADDY_KEYRING"
+  curl --fail --silent --show-error --location \
+    https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt \
+    --output "$CADDY_SOURCE"
+  apt-get update
+
   if ! command -v caddy >/dev/null 2>&1; then
-    curl --fail --silent --show-error --location \
-      https://dl.cloudsmith.io/public/caddy/stable/gpg.key \
-      | gpg --dearmor --yes --output "$CADDY_KEYRING"
-    curl --fail --silent --show-error --location \
-      https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt \
-      --output "$CADDY_SOURCE"
-    apt-get update
     apt-get install --yes caddy
   fi
 

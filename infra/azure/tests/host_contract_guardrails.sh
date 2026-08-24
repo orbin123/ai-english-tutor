@@ -133,6 +133,11 @@ grep -Eq 'STORAGE_BACKEND=azure' "$bootstrap"
 grep -Eq 'request_body' "$bootstrap"
 grep -Eq 'max_size 5MB' "$bootstrap"
 grep -Eq 'dpkg --compare-versions.*caddy_version' "$bootstrap"
+caddy_source_removal="rm -f -- \"\$CADDY_SOURCE\""
+grep -Fq "$caddy_source_removal" "$bootstrap"
+[[ "$(grep -nF "$caddy_source_removal" "$bootstrap" | head -n1 | cut -d: -f1)" -lt \
+  "$(grep -nF 'apt-get update' "$bootstrap" | head -n1 | cut -d: -f1)" ]]
+[[ "$(grep -cF 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' "$bootstrap")" == "1" ]]
 grep -Eq 'reverse_proxy 127\.0\.0\.1:8000' "$bootstrap"
 grep -Eq '@maintenance file /maintenance' "$bootstrap"
 grep -Eq 'SystemMaxUse=100M' "$bootstrap"

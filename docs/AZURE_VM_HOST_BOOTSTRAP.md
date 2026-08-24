@@ -61,6 +61,8 @@ az vm run-command invoke \
 
 The operation is idempotent. It:
 
+- repairs a partial prior bootstrap that left the Caddy apt source without its
+  signing key before refreshing packages;
 - installs Docker, Caddy, Azure CLI, bounded journaling, unattended security
   updates, and a 1 GiB disk-backed swapfile;
 - configures Caddy for ACME HTTPS, WebSockets, a 5 MiB request cap, the local
