@@ -79,6 +79,26 @@ def test_init_sentry_noop_without_dsn(monkeypatch):
     assert calls == []
 
 
+def test_init_sentry_noop_with_placeholder_dsn(monkeypatch):
+    calls: list = []
+    monkeypatch.setattr(sentry.sentry_sdk, "init", lambda **kw: calls.append(kw))
+    monkeypatch.setattr(settings, "sentry_dsn", "replace-me")
+
+    sentry.init_sentry()
+
+    assert calls == []
+
+
+def test_init_sentry_noop_with_invalid_dsn(monkeypatch):
+    calls: list = []
+    monkeypatch.setattr(sentry.sentry_sdk, "init", lambda **kw: calls.append(kw))
+    monkeypatch.setattr(settings, "sentry_dsn", "not-a-valid-dsn")
+
+    sentry.init_sentry()
+
+    assert calls == []
+
+
 def test_init_sentry_initialises_with_dsn(monkeypatch):
     calls: list = []
     monkeypatch.setattr(sentry.sentry_sdk, "init", lambda **kw: calls.append(kw))

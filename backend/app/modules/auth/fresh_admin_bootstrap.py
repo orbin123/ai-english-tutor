@@ -55,7 +55,7 @@ _CATALOG_TABLES = frozenset(
 _BOOTSTRAP_TABLES = frozenset({"users", "user_roles"})
 _NON_ORM_TABLES = frozenset({"alembic_version"})
 _ADVISORY_LOCK_ID = 4_792_061_151
-_EXPECTED_ALEMBIC_HEAD = "s9t0u1v2w345"
+_EXPECTED_ALEMBIC_HEAD = "t0u1v2w3x456"
 _POST_MIGRATION_PERMISSION_KEYS = {
     key for key, _description in REQUIRED_PERMISSIONS
 } - {"ai_quality.read", "reviews.read"}

@@ -13017,6 +13017,32 @@
         ]
       }
     },
+    "/health/live": {
+      "get": {
+        "description": "Liveness alias for /health — the endpoint the Azure VM deploy gate probes.",
+        "operationId": "liveness_check_health_live_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Liveness Check Health Live Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness Check",
+        "tags": [
+          "system"
+        ]
+      }
+    },
     "/health/ready": {
       "get": {
         "description": "Readiness probe for the database and configured optional dependencies.\n\nWired to the ALB/ECS target-group health check so a task with a broken\ndependency is pulled out of rotation instead of serving 500s. Returns 503\nwith a per-dependency breakdown when anything is down.",

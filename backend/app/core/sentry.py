@@ -22,7 +22,9 @@ correlation timeline.
 
 from __future__ import annotations
 
+import logging
 import sys
+from urllib.parse import urlsplit
 
 import sentry_sdk
 from sentry_sdk.types import Event, Hint
@@ -42,6 +44,13 @@ from app.ai.pronunciation.exceptions import (
 from app.ai.stt.exceptions import STTPayloadTooLarge, STTRateLimited, STTTimeout
 from app.ai.tts.exceptions import TTSRateLimited, TTSTimeout
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+# Common .env placeholder values — treated as "disabled", not real DSNs.
+_PLACEHOLDER_DSNS = frozenset(
+    {"replace-me", "<sentry-dsn>", "changeme", "none", "false", "disabled"}
+)
 
 # Expected/recoverable failures we already catch and retry. Reporting these to
 # Sentry would be noise — they are normal operating conditions, not bugs.
@@ -92,10 +101,24 @@ def _before_send(event: Event, hint: Hint) -> Event | None:
     return event
 
 
+def _sentry_dsn_is_configured(dsn: str) -> bool:
+    """Return True only for a non-empty, non-placeholder DSN Sentry can parse."""
+
+    dsn = dsn.strip()
+    if not dsn or dsn.lower() in _PLACEHOLDER_DSNS:
+        return False
+    parts = urlsplit(dsn)
+    return parts.scheme in ("http", "https") and bool(parts.netloc)
+
+
 def init_sentry() -> None:
     """Initialise Sentry once at startup. No-op when no DSN is configured."""
 
-    if not settings.sentry_dsn:
+    if not _sentry_dsn_is_configured(settings.sentry_dsn):
+        if settings.sentry_dsn.strip():
+            logger.warning(
+                "SENTRY_DSN is set but invalid or a placeholder — Sentry disabled"
+            )
         return
 
     sentry_sdk.init(

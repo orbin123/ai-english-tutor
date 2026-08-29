@@ -27,6 +27,12 @@ def _payload(response) -> dict:
     return json.loads(response.body)
 
 
+def test_liveness_alias_matches_health_check() -> None:
+    assert (
+        main_module.liveness_check() == main_module.health_check() == {"status": "ok"}
+    )
+
+
 def test_memory_backend_is_ready_without_redis(monkeypatch) -> None:
     monkeypatch.setattr(main_module, "engine", _Engine())
     monkeypatch.setattr(main_module.settings, "AI_RATE_LIMIT_ENABLED", True)
