@@ -4,6 +4,11 @@
 **Reference:** [AZURE_ZERO_COST_MIGRATION.md](./AZURE_ZERO_COST_MIGRATION.md)
 **Free-tier expiry:** 18 June 2027
 
+**Live cloud (29 August 2026):** the VM topology **is provisioned**. See
+[Azure/LIVE_STATUS.md](./Azure/LIVE_STATUS.md). The API process is not on
+the VM yet; `api.lingosai.com` does not exist. Container Apps is not in
+this subscription.
+
 This document tracks what has been completed toward running `www.lingosai.com`
 end-to-end on Azure at zero Azure infrastructure cost, and what remains.
 

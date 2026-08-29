@@ -139,6 +139,12 @@ def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/health/live", tags=["system"])
+def liveness_check() -> dict[str, str]:
+    """Liveness alias for /health — the endpoint the Azure VM deploy gate probes."""
+    return {"status": "ok"}
+
+
 @app.get("/health/ready", tags=["system"])
 def readiness_check() -> JSONResponse:
     """Readiness probe for the database and configured optional dependencies.
