@@ -12,6 +12,7 @@ from sqlalchemy import text
 
 from app.ai.routes import router as ai_router
 from app.core.config import settings
+from app.core.cors_errors import CorsErrorSafetyMiddleware
 from app.core.database import engine
 from app.core.logging import AccessLogMiddleware, TraceIDMiddleware, configure_logging
 from app.core.rate_limit import AdminRateLimitMiddleware
@@ -60,6 +61,12 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+# Just outside CORSMiddleware: catches route exceptions that would otherwise be
+# turned into a 500 by Starlette's ServerErrorMiddleware (which sits above all
+# user middleware) and lose their CORS headers, surfacing in the browser as a
+# misleading CORS error instead of the real failure.
+app.add_middleware(CorsErrorSafetyMiddleware)
 
 app.add_middleware(AdminRateLimitMiddleware)
 
