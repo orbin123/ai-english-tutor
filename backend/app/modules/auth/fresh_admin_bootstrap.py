@@ -54,6 +54,10 @@ _CATALOG_TABLES = frozenset(
 )
 _BOOTSTRAP_TABLES = frozenset({"users", "user_roles"})
 _NON_ORM_TABLES = frozenset({"alembic_version"})
+# Phase 8 dropped these ORM-still-registered tables from the migration graph.
+# Fresh Azure databases match Alembic head without them; SQLite create_all tests
+# still materialize them. Treat absence as allowed, presence as allowed.
+_DROPPED_LEGACY_TABLES = frozenset({"courses", "user_enrollments"})
 _ADVISORY_LOCK_ID = 4_792_061_151
 _EXPECTED_ALEMBIC_HEAD = "t0u1v2w3x456"
 _POST_MIGRATION_PERMISSION_KEYS = {
@@ -156,7 +160,7 @@ def _lock_bootstrap_transaction(db: Session) -> None:
 def _validate_schema(db: Session) -> None:
     expected = set(Base.metadata.tables)
     actual = set(inspect(db.connection()).get_table_names())
-    missing = expected - actual
+    missing = expected - actual - _DROPPED_LEGACY_TABLES
     unknown = actual - expected - _NON_ORM_TABLES
     if missing or unknown:
         raise FreshAdminBootstrapError(
