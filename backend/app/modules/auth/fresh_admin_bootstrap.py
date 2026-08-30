@@ -246,7 +246,7 @@ def _reject_unexpected_runtime_data(db: Session) -> None:
     allowed = _CATALOG_TABLES | _BOOTSTRAP_TABLES
     unexpected_tables = []
     for table in sorted(Base.metadata.tables.values(), key=lambda item: item.name):
-        if table.name in allowed:
+        if table.name in allowed or table.name in _DROPPED_LEGACY_TABLES:
             continue
         has_row = db.execute(select(literal(1)).select_from(table).limit(1)).first()
         if has_row is not None:
