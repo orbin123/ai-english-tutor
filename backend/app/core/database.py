@@ -3,7 +3,7 @@
 from collections.abc import Generator
 
 from sqlalchemy import create_engine
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.azure_postgres import install_azure_postgres_auth
@@ -14,6 +14,18 @@ _db_url = make_url(settings.database_url)
 if _db_url.drivername == "postgresql":
     _db_url = _db_url.set(drivername="postgresql+psycopg")
 
+
+def apply_configured_database_auth(bind: Engine) -> Engine:
+    """Attach Entra token injection when production uses managed identity.
+
+    Alembic builds its own engine; it must call this or migrations connect
+    without a password and fail against Azure PostgreSQL.
+    """
+    if settings.DATABASE_AUTH_MODE == "azure-managed-identity":
+        install_azure_postgres_auth(bind)
+    return bind
+
+
 engine = create_engine(
     _db_url,
     echo=settings.sql_echo,
@@ -22,8 +34,7 @@ engine = create_engine(
     pool_timeout=settings.DB_POOL_TIMEOUT,
     pool_pre_ping=True,
 )
-if settings.DATABASE_AUTH_MODE == "azure-managed-identity":
-    install_azure_postgres_auth(engine)
+apply_configured_database_auth(engine)
 
 # Session Factory
 SessionLocal = sessionmaker(

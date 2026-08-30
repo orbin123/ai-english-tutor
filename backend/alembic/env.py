@@ -9,7 +9,7 @@ from app import models  # noqa: F401
 
 # Project imports
 from app.core.config import settings
-from app.core.database import Base
+from app.core.database import Base, apply_configured_database_auth
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -68,10 +68,12 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
+    connectable = apply_configured_database_auth(
+        engine_from_config(
+            config.get_section(config.config_ini_section, {}),
+            prefix="sqlalchemy.",
+            poolclass=pool.NullPool,
+        )
     )
 
     with connectable.connect() as connection:

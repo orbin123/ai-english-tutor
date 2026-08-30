@@ -72,3 +72,39 @@ def test_sqlalchemy_hook_injects_token_per_new_connection(monkeypatch) -> None:
 
     captured["listener"](None, None, [], params)
     assert params == {"password": "token-two"}
+
+
+def test_apply_configured_database_auth_installs_hook_for_managed_identity(
+    monkeypatch,
+) -> None:
+    from app.core import database as database_module
+
+    calls: list[object] = []
+    engine = object()
+    monkeypatch.setattr(
+        database_module.settings, "DATABASE_AUTH_MODE", "azure-managed-identity"
+    )
+    monkeypatch.setattr(
+        database_module,
+        "install_azure_postgres_auth",
+        lambda bind: calls.append(bind),
+    )
+
+    assert database_module.apply_configured_database_auth(engine) is engine  # type: ignore[arg-type]
+    assert calls == [engine]
+
+
+def test_apply_configured_database_auth_skips_password_mode(monkeypatch) -> None:
+    from app.core import database as database_module
+
+    calls: list[object] = []
+    engine = object()
+    monkeypatch.setattr(database_module.settings, "DATABASE_AUTH_MODE", "password")
+    monkeypatch.setattr(
+        database_module,
+        "install_azure_postgres_auth",
+        lambda bind: calls.append(bind),
+    )
+
+    assert database_module.apply_configured_database_auth(engine) is engine  # type: ignore[arg-type]
+    assert calls == []
