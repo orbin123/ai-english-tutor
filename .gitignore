@@ -61,6 +61,10 @@ backup*.sql
 # and the reviewed Azure operator scripts below can be re-included.
 /scripts/*
 !/scripts/build-prod-env.sh
+!/scripts/_azure-common.sh
+!/scripts/azure-up.sh
+!/scripts/azure-down.sh
+!/scripts/azure-status.sh
 
 # Test Files
 backend/scratch
