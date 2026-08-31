@@ -29,6 +29,14 @@ venv/
 !/docs/AZURE_DEPLOYMENT_STATUS.md
 !/docs/AZURE_PHASE0_OWNER_CHECKLIST.md
 
+# Azure go-live plan and its progress log. These are the two files a new
+# session reads to pick the work up, so they belong with the repository.
+!/docs/azure/
+!/docs/azure/README.md
+!/docs/azure/MASTER_PLAN.md
+!/docs/azure/AGENT_WORK.md
+!/docs/azure/LIVE_STATUS.md
+
 # macOS (IMPORTANT for you)
 .DS_Store
 
