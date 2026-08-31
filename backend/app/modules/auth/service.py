@@ -126,8 +126,14 @@ class AuthService:
         )
         if existing_link:
             user = existing_link.user
+            needs_commit = False
             if not user.email_verified:
                 self._mark_email_verified(user)
+                needs_commit = True
+            if self.profiles.get_by_user_id(user.id) is None:
+                self.profiles.create_default(user_id=user.id)
+                needs_commit = True
+            if needs_commit:
                 self.db.commit()
                 self.db.refresh(user)
             return user, False
@@ -143,6 +149,8 @@ class AuthService:
             )
             if not existing_user.email_verified:
                 self._mark_email_verified(existing_user)
+            if self.profiles.get_by_user_id(existing_user.id) is None:
+                self.profiles.create_default(user_id=existing_user.id)
             self.db.commit()
             self.db.refresh(existing_user)
             return existing_user, False

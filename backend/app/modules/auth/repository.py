@@ -239,6 +239,18 @@ class UserProfileRepository:
         self.db.flush()
         return profile
 
+    def ensure_default(self, user_id: int) -> UserProfile:
+        """Return the user's profile, creating a default one if it's missing.
+
+        Every signup path creates a profile, but a few accounts predate that
+        guarantee (the fresh-admin bootstrap, and users who first signed up
+        with email/password before this backfill existed). Idempotent.
+        """
+        profile = self.get_by_user_id(user_id)
+        if profile is None:
+            profile = self.create_default(user_id)
+        return profile
+
     def set_structured_personalisation(
         self,
         *,

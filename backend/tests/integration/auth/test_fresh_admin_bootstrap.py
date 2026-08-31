@@ -105,7 +105,9 @@ def test_bootstrap_creates_only_verified_admin_account(db_session: Session) -> N
     assert user.is_superuser is True
     assert user.email_verified is True
     assert user.email_verified_at is not None
-    assert user.profile is None
+    # A learning profile is created so the diagnosis flow accepts this account.
+    assert user.profile is not None
+    assert user.profile.diagnosis_completed is False
     assert {link.role.name for link in user.role_links} == {
         ROLE_ADMIN,
         ROLE_SUPER_ADMIN,
