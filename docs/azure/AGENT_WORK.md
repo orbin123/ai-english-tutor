@@ -20,8 +20,8 @@ AI attribution in commits or PRs, and never commit a real secret.
 
 | # | Phase | Branch | PR | Status | Date | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| 0 | Tracking files | `docs/azure-master-plan` | — | IN PROGRESS | 2026-08-31 | Creates this file, `MASTER_PLAN.md`, and corrects `LIVE_STATUS.md` |
-| 1 | Production environment file | `chore/azure-prod-env-template` | — | NOT STARTED | — | Highest-risk phase. Real keys are filled in by the owner and never committed |
+| 0 | Tracking files | `docs/azure-master-plan` | [#208](https://github.com/orbin123/lingos-ai/pull/208) | DONE | 2026-08-31 | `docs/azure/` had to be un-ignored in `.gitignore` |
+| 1 | Production environment file | `chore/azure-prod-env-template` | — | IN PROGRESS | 2026-08-31 | Template + `scripts/build-prod-env.sh` are in the PR. **The owner still has to run `init` / `edit` / `check` / `upload` to put real keys in Key Vault** — that step is deliberately manual |
 | 2 | External credential verification | `feat/external-service-healthcheck` | — | NOT STARTED | — | Must pass **on the VM**, not just locally |
 | 3 | Wake, deploy, verify live | `fix/azure-live-bringup` | — | NOT STARTED | — | Needs Phase 1 uploaded to Key Vault first |
 | 4 | End-to-end functional verification | `test/azure-e2e-smoke` | — | NOT STARTED | — | Chat flow, mentor note, stats/streak dates |
@@ -30,7 +30,12 @@ AI attribution in commits or PRs, and never commit a real secret.
 
 ## Open issues
 
-Nothing recorded yet. Findings from Phase 4 in particular belong here.
+- **Phase 1 leaves one manual step for the owner.** The repository now carries the
+  template and the build/validate script, but the file with real secrets must be produced
+  and uploaded by hand: `scripts/build-prod-env.sh init`, fill the 13 secret values,
+  then `check` and `upload`. Phase 3 cannot start until that upload has happened.
+
+Findings from Phase 4 in particular belong here.
 
 ## Decisions already made (do not re-litigate)
 
