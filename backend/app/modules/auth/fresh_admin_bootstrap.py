@@ -19,6 +19,7 @@ from app.modules.auth.models import (
     Role,
     RolePermission,
     User,
+    UserProfile,
     UserRole,
 )
 from app.modules.auth.permissions import DEFAULT_ROLE_PERMISSIONS, REQUIRED_PERMISSIONS
@@ -52,7 +53,7 @@ _CATALOG_TABLES = frozenset(
         "skills",
     }
 )
-_BOOTSTRAP_TABLES = frozenset({"users", "user_roles"})
+_BOOTSTRAP_TABLES = frozenset({"users", "user_roles", "user_profiles"})
 _NON_ORM_TABLES = frozenset({"alembic_version"})
 # Phase 8 dropped these ORM-still-registered tables from the migration graph.
 # Fresh Azure databases match Alembic head without them; SQLite create_all tests
@@ -114,6 +115,9 @@ def bootstrap_fresh_admin(
             [
                 UserRole(user_id=user.id, role_id=roles[ROLE_ADMIN].id),
                 UserRole(user_id=user.id, role_id=roles[ROLE_SUPER_ADMIN].id),
+                # Every signup path creates a profile; the bootstrap must too,
+                # or the diagnosis flow rejects this account with "no profile".
+                UserProfile(user_id=user.id),
             ]
         )
         db.flush()
@@ -144,6 +148,13 @@ def bootstrap_fresh_admin(
     )
     if not is_exact_match:
         raise FreshAdminBootstrapError("existing bootstrap account does not match")
+
+    # Backfill the learning profile for an admin created by an earlier bootstrap
+    # that predated this row. Adding a missing child row is not repairing or
+    # replacing an existing value, so the strict-match contract above still holds.
+    if db.scalar(select(UserProfile).where(UserProfile.user_id == user.id)) is None:
+        db.add(UserProfile(user_id=user.id))
+        db.flush()
 
     return FreshAdminBootstrapResult(created=False, user_id=user.id)
 

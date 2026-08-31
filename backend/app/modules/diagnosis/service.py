@@ -92,23 +92,26 @@ class DiagnosisService:
             ReadAloudAnalysisOut).
 
         Raises:
-            DiagnosisInvalidPayload: profile missing
+            DiagnosisInvalidPayload: submitted answers reference an unknown set
             DiagnosisAlreadyCompleted: user already diagnosed
         """
-        # 1. Load + guard profile
-        profile = self.profiles.get_by_user_id(user_id)
-        if profile is None:
-            raise DiagnosisInvalidPayload(f"No profile found for user {user_id}")
+        # 1. Load profile, backfilling it for the rare account that never got
+        # one at signup (e.g. the fresh-admin bootstrap). The row is committed
+        # with the rest of the diagnosis writes in step 6.
+        profile = self.profiles.ensure_default(user_id)
         if profile.diagnosis_completed:
             raise DiagnosisAlreadyCompleted(
                 f"User {user_id} has already completed diagnosis"
             )
 
         # 2. Run evaluators
-        fill_correct = self.rule_eval.evaluate_fill_blank(
-            question_set_id=payload.fill_blank.question_set_id,
-            user_answers=payload.fill_blank.answers,
-        )
+        try:
+            fill_correct = self.rule_eval.evaluate_fill_blank(
+                question_set_id=payload.fill_blank.question_set_id,
+                user_answers=payload.fill_blank.answers,
+            )
+        except ValueError as exc:
+            raise DiagnosisInvalidPayload(str(exc)) from exc
         writing = await evaluate_writing(
             prompt_id=payload.writing.prompt_id,
             response_text=payload.writing.response_text,

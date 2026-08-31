@@ -131,48 +131,48 @@ def _sample_payload() -> DiagnosisSubmitRequest:
     )
 
 
+@pytest.fixture()
+def _stub_diagnosis_llms(monkeypatch):
+    """Stub the LLM writing evaluator, the LLM feedback agent, and the
+    personalization refresh so diagnosis runs offline."""
+
+    async def _fake_writing(**_kwargs):
+        return DiagnosisWritingScores(
+            writing_score=7.0,
+            expression_score=0.6,
+            vocabulary_score=0.5,
+            tone_score=0.5,
+        )
+
+    async def _fake_feedback(**_kwargs):
+        return diagnosis_service_module.DiagnosisFeedbackOutput(
+            estimated_level_label="B1 · Intermediate",
+            level_description="ok",
+            summary="ok",
+            biggest_weakness=SkillCallout(skill_name="tone", description="ok"),
+            strongest_skill=SkillCallout(skill_name="grammar", description="ok"),
+            first_focus=FocusCallout(title="Speaking", description="ok"),
+        )
+
+    async def _noop_refresh(self, user_id: int):  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr(diagnosis_service_module, "evaluate_writing", _fake_writing)
+    monkeypatch.setattr(
+        diagnosis_service_module, "generate_diagnosis_feedback", _fake_feedback
+    )
+    monkeypatch.setattr(
+        diagnosis_service_module.PersonalizationService,
+        "refresh_for_user",
+        _noop_refresh,
+    )
+
+
 class TestDiagnosisWritesPointsOnly:
     @pytest.mark.asyncio
-    async def test_seeds_seven_skill_points_rows(self, db_session, monkeypatch):
-        # Stub the LLM writing evaluator, the LLM feedback agent, and the
-        # personalization refresh so the test runs offline.
-        async def _fake_writing(**_kwargs):
-            return DiagnosisWritingScores(
-                writing_score=7.0,
-                expression_score=0.6,
-                vocabulary_score=0.5,
-                tone_score=0.5,
-            )
-
-        async def _fake_feedback(**_kwargs):
-            return diagnosis_service_module.DiagnosisFeedbackOutput(
-                estimated_level_label="B1 · Intermediate",
-                level_description="ok",
-                summary="ok",
-                biggest_weakness=SkillCallout(skill_name="tone", description="ok"),
-                strongest_skill=SkillCallout(skill_name="grammar", description="ok"),
-                first_focus=FocusCallout(title="Speaking", description="ok"),
-            )
-
-        async def _noop_refresh(self, user_id: int):  # noqa: ARG001
-            return None
-
-        monkeypatch.setattr(
-            diagnosis_service_module,
-            "evaluate_writing",
-            _fake_writing,
-        )
-        monkeypatch.setattr(
-            diagnosis_service_module,
-            "generate_diagnosis_feedback",
-            _fake_feedback,
-        )
-        monkeypatch.setattr(
-            diagnosis_service_module.PersonalizationService,
-            "refresh_for_user",
-            _noop_refresh,
-        )
-
+    async def test_seeds_seven_skill_points_rows(
+        self, db_session, _stub_diagnosis_llms
+    ):
         user = db_session.query(User).one()
         svc = DiagnosisService(db_session)
         skill_scores, _feedback, read_aloud = await svc.run_diagnosis(
@@ -207,6 +207,30 @@ class TestDiagnosisWritesPointsOnly:
         # service no longer touches `user_skill_scores`.
         bind_tables = sa_inspect(db_session.get_bind()).get_table_names()
         assert "user_skill_scores" not in bind_tables
+
+    @pytest.mark.asyncio
+    async def test_backfills_a_missing_profile_instead_of_failing(
+        self, db_session, _stub_diagnosis_llms
+    ):
+        # An account created without a profile (e.g. the fresh-admin
+        # bootstrap) used to hit "No profile found for user N" on submit.
+        user = User(email="no-profile@example.com", password_hash="x", name="NP")
+        db_session.add(user)
+        db_session.commit()
+        assert user.profile is None
+
+        svc = DiagnosisService(db_session)
+        skill_scores, _feedback, _read_aloud = await svc.run_diagnosis(
+            user_id=user.id, payload=_sample_payload()
+        )
+
+        db_session.refresh(user)
+        assert user.profile is not None
+        assert user.profile.diagnosis_completed is True
+        rows = (
+            db_session.query(SkillPoints).filter(SkillPoints.user_id == user.id).all()
+        )
+        assert len(rows) == len(skill_scores) == 7
 
 
 class TestModuleShape:
