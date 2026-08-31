@@ -21,12 +21,27 @@ AI attribution in commits or PRs, and never commit a real secret.
 | # | Phase | Branch | PR | Status | Date | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | 0 | Tracking files | `docs/azure-master-plan` | [#208](https://github.com/orbin123/lingos-ai/pull/208) | DONE | 2026-08-31 | `docs/azure/` had to be un-ignored in `.gitignore` |
-| 1 | Production environment file | `chore/azure-prod-env-template` | — | IN PROGRESS | 2026-08-31 | Template + `scripts/build-prod-env.sh` are in the PR. **The owner still has to run `init` / `edit` / `check` / `upload` to put real keys in Key Vault** — that step is deliberately manual |
-| 2 | External credential verification | `feat/external-service-healthcheck` | — | IN PROGRESS | 2026-08-31 | Script passes locally against real keys. Still needs a run **on the VM** in Phase 3 |
-| 3 | Wake, deploy, verify live | `fix/azure-live-bringup` | — | NOT STARTED | — | Needs Phase 1 uploaded to Key Vault first |
+| 1 | Production environment file | `chore/azure-prod-env-template` | [#209](https://github.com/orbin123/lingos-ai/pull/209) | CODE DONE, **OWNER STEP PENDING** | 2026-08-31 | Template and `scripts/build-prod-env.sh` are merged. The owner must still run `init` / `edit` / `check` / `upload` to put real keys in Key Vault. **Phase 3 is blocked until that upload happens.** |
+| 2 | External credential verification | `feat/external-service-healthcheck` | [#210](https://github.com/orbin123/lingos-ai/pull/210) | DONE (locally) | 2026-08-31 | 9 pass, 2 correctly skip locally. The Azure Blob and PostgreSQL probes only run for real **on the VM**, in Phase 3 |
+| 3 | Wake, deploy, verify live | `fix/azure-live-bringup` | — | **BLOCKED** | — | Waiting on the Phase 1 owner step. This is the next phase to run once `backend-env` holds real keys |
 | 4 | End-to-end functional verification | `test/azure-e2e-smoke` | — | NOT STARTED | — | Chat flow, mentor note, stats/streak dates |
-| 5 | Local sleep/wake control | `feat/local-azure-lifecycle-scripts` | — | IN PROGRESS | 2026-08-31 | Done out of order, because Phase 3 is blocked on the Key Vault upload. `azure-status.sh` verified live |
+| 5 | Local sleep/wake control | `feat/local-azure-lifecycle-scripts` | [#211](https://github.com/orbin123/lingos-ai/pull/211) | DONE | 2026-08-31 | Done out of order because Phase 3 is blocked. `azure-status.sh` verified against live Azure; `azure-up.sh` / `azure-down.sh` get their first real run in Phase 3 |
 | 6 | Docs reconciliation + cost guard | `docs/azure-reconcile` | — | NOT STARTED | — | Raise the $1/month budget; fix the stale docs |
+
+## What the owner has to do next
+
+Phases 0, 1, 2 and 5 are merged. Everything that can be done without live secrets is done.
+The one thing blocking Phase 3, and therefore Phase 4:
+
+```
+scripts/build-prod-env.sh init      # pre-fills every non-secret value
+scripts/build-prod-env.sh edit      # fill the 13 secrets by hand
+scripts/build-prod-env.sh check     # both gates must pass
+scripts/build-prod-env.sh upload    # stores it in Key Vault, then shreds the local copy
+```
+
+Twelve of the thirteen values can be copied from the repo-root `.env`. Generate fresh
+values for `JWT_SECRET` and `OTP_HASHING_SECRET` with `openssl rand -hex 32`.
 
 ## Open issues
 
