@@ -25,10 +25,17 @@ AI attribution in commits or PRs, and never commit a real secret.
 | 2 | External credential verification | `feat/external-service-healthcheck` | — | IN PROGRESS | 2026-08-31 | Script passes locally against real keys. Still needs a run **on the VM** in Phase 3 |
 | 3 | Wake, deploy, verify live | `fix/azure-live-bringup` | — | NOT STARTED | — | Needs Phase 1 uploaded to Key Vault first |
 | 4 | End-to-end functional verification | `test/azure-e2e-smoke` | — | NOT STARTED | — | Chat flow, mentor note, stats/streak dates |
-| 5 | Local sleep/wake control | `feat/local-azure-lifecycle-scripts` | — | NOT STARTED | — | `azure-up.sh` / `azure-down.sh` / `azure-status.sh` |
+| 5 | Local sleep/wake control | `feat/local-azure-lifecycle-scripts` | — | IN PROGRESS | 2026-08-31 | Done out of order, because Phase 3 is blocked on the Key Vault upload. `azure-status.sh` verified live |
 | 6 | Docs reconciliation + cost guard | `docs/azure-reconcile` | — | NOT STARTED | — | Raise the $1/month budget; fix the stale docs |
 
 ## Open issues
+
+- **August 2026 consumed 713.5 of the 750 free VM hours (95%).** Discovered by
+  `scripts/azure-status.sh` on 31 August: the VM sat *running but idle* from 1 August until
+  30 August, with no application installed. Roughly 37 hours of allowance were left for
+  the month. The allowance resets on 1 September, but this is exactly the failure the
+  sleep/wake discipline exists to prevent — wake for a bounded window, and run
+  `scripts/azure-down.sh` when finished.
 
 - **The `/health/ready?deep=1` idea from MASTER_PLAN Phase 2 was deliberately dropped.**
   `/health/ready` is unauthenticated and public, so a `deep` mode would let anyone on the
