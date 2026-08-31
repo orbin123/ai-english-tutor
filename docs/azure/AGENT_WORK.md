@@ -21,27 +21,45 @@ AI attribution in commits or PRs, and never commit a real secret.
 | # | Phase | Branch | PR | Status | Date | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | 0 | Tracking files | `docs/azure-master-plan` | [#208](https://github.com/orbin123/lingos-ai/pull/208) | DONE | 2026-08-31 | `docs/azure/` had to be un-ignored in `.gitignore` |
-| 1 | Production environment file | `chore/azure-prod-env-template` | [#209](https://github.com/orbin123/lingos-ai/pull/209) | CODE DONE, **OWNER STEP PENDING** | 2026-08-31 | Template and `scripts/build-prod-env.sh` are merged. The owner must still run `init` / `edit` / `check` / `upload` to put real keys in Key Vault. **Phase 3 is blocked until that upload happens.** |
-| 2 | External credential verification | `feat/external-service-healthcheck` | [#210](https://github.com/orbin123/lingos-ai/pull/210) | DONE (locally) | 2026-08-31 | 9 pass, 2 correctly skip locally. The Azure Blob and PostgreSQL probes only run for real **on the VM**, in Phase 3 |
-| 3 | Wake, deploy, verify live | `fix/azure-live-bringup` | — | **BLOCKED** | — | Waiting on the Phase 1 owner step. This is the next phase to run once `backend-env` holds real keys |
+| 1 | Production environment file | `chore/azure-prod-env-template` | [#209](https://github.com/orbin123/lingos-ai/pull/209) | DONE | 2026-08-31 | Real values uploaded to Key Vault `backend-env` version `b0d33c5f889b4d0fbe392dfd96012e29`. Both gates passed first. Two older versions remain as rollback |
+| 2 | External credential verification | `feat/external-service-healthcheck` | [#210](https://github.com/orbin123/lingos-ai/pull/210) | DONE | 2026-08-31 | Run against the **production** values: 10 of 11 pass, including Azure Blob. Only `azure-postgres` fails, correctly — the server is stopped and its firewall admits the VM only. Re-run it on the VM in Phase 3 |
+| 3 | Wake, deploy, verify live | `fix/azure-live-bringup` | — | READY | — | Unblocked: Key Vault holds the real environment. **This is the next phase to run.** |
 | 4 | End-to-end functional verification | `test/azure-e2e-smoke` | — | NOT STARTED | — | Chat flow, mentor note, stats/streak dates |
 | 5 | Local sleep/wake control | `feat/local-azure-lifecycle-scripts` | [#211](https://github.com/orbin123/lingos-ai/pull/211) | DONE | 2026-08-31 | Done out of order because Phase 3 is blocked. `azure-status.sh` verified against live Azure; `azure-up.sh` / `azure-down.sh` get their first real run in Phase 3 |
 | 6 | Docs reconciliation + cost guard | `docs/azure-reconcile` | — | NOT STARTED | — | Raise the $1/month budget; fix the stale docs |
 
-## What the owner has to do next
+## Where this stands
 
-Phases 0, 1, 2 and 5 are merged. Everything that can be done without live secrets is done.
-The one thing blocking Phase 3, and therefore Phase 4:
+Phases 0, 1, 2 and 5 are merged, and the production environment is in Key Vault. **Phase 3
+is the next phase to run.**
 
-```
-scripts/build-prod-env.sh init      # pre-fills every non-secret value
-scripts/build-prod-env.sh edit      # fill the 13 secrets by hand
-scripts/build-prod-env.sh check     # both gates must pass
-scripts/build-prod-env.sh upload    # stores it in Key Vault, then shreds the local copy
-```
+### What is in `backend-env` (version `b0d33c5f…96012e29`)
 
-Twelve of the thirteen values can be copied from the repo-root `.env`. Generate fresh
-values for `JWT_SECRET` and `OTP_HASHING_SECRET` with `openssl rand -hex 32`.
+The owner supplied a complete production file. It was uploaded as pasted, except for eight
+deliberate changes agreed at the time:
+
+| Setting | Was | Is | Why |
+| --- | --- | --- | --- |
+| `ENABLE_DEEPGRAM` | false | true | A2Z speech game needs it; free tier |
+| `ENABLE_RAG_FEEDBACK` | false | true | Mentor note needs it |
+| `ENABLE_MENTOR_SAMPLING` | false | true | Mentor note needs both switches |
+| `ENABLE_IMAGE_GENERATION` | false | true | Wanted |
+| `QUOTA_MONTHLY_IMAGE_GENS` | 0 | 300 | Finite cap rather than a kill switch |
+| `DEEPGRAM_API_KEY` | empty | set | Required once the switch is on |
+| `LANGCHAIN_TRACING_V2` | false | true | Deliberate: tracing sends learner content to LangSmith |
+| `SENTRY_DSN` | a real DSN | blank | Sentry deliberately off |
+
+`AI_EVAL_ENABLED` and `AI_REQUEST_LOGGING_ENABLED` were left `false` as supplied.
+
+Note the file keeps `OPENAI_CHAT_MODEL=gpt-4o-mini`, not the `gpt-4.1-mini` the repo
+template suggests. That is the owner's value and was left alone.
+
+### One thing to remember about `EMAIL_FROM`
+
+It is written **unquoted** (`EMAIL_FROM=LingosAI <noreply@lingosai.com>`). That is correct
+for Docker's `--env-file`, which does not strip quotes — quoting it would make the quote
+characters part of the address. The side effect is that the file cannot be `source`d in a
+shell, because `<` reads as a redirect. Load it with a parser, not `source`.
 
 ## Open issues
 
