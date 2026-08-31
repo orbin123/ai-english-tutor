@@ -57,7 +57,10 @@ backup*.sql
 
 # Root-level ad-hoc/ops scripts (DR drills, dev shortcut) — kept local, not online.
 # Anchored with a leading slash so it does NOT also match backend/scripts/.
-/scripts/
+# Matches the contents rather than the directory itself, so git descends into it
+# and the reviewed Azure operator scripts below can be re-included.
+/scripts/*
+!/scripts/build-prod-env.sh
 
 # Test Files
 backend/scratch
