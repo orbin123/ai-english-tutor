@@ -12,6 +12,9 @@
 5. If a phase turns up a problem that does not belong to it, write it under
    **Open issues** below rather than widening the phase.
 
+**Right now that means Phase 3.** Jump to *Next up: Phase 3* below — it has the full
+runbook, the live resource names, and the failures to expect.
+
 Rules that apply to every phase are in the *Ground rules* section of `MASTER_PLAN.md`.
 The short version: never push to `main`, sign off every commit with `git commit -s`, no
 AI attribution in commits or PRs, and never commit a real secret.
@@ -51,15 +54,119 @@ deliberate changes agreed at the time:
 
 `AI_EVAL_ENABLED` and `AI_REQUEST_LOGGING_ENABLED` were left `false` as supplied.
 
+A ninth change was a bug fix rather than a decision — see the `EMAIL_FROM` note below.
+
+The uploaded values were then verified end to end: **10 of 11 probes pass**, including
+Pinecone (1024d cosine, 125 vectors), Deepgram, Azure Speech, Azure Blob, Resend, Razorpay
+test mode and LangSmith. Only `azure-postgres` fails, correctly, from a laptop.
+
 Note the file keeps `OPENAI_CHAT_MODEL=gpt-4o-mini`, not the `gpt-4.1-mini` the repo
 template suggests. That is the owner's value and was left alone.
 
-### One thing to remember about `EMAIL_FROM`
+### `EMAIL_FROM` — a fixed bug, and a trap
 
-It is written **unquoted** (`EMAIL_FROM=LingosAI <noreply@lingosai.com>`). That is correct
-for Docker's `--env-file`, which does not strip quotes — quoting it would make the quote
-characters part of the address. The side effect is that the file cannot be `source`d in a
-shell, because `<` reads as a redirect. Load it with a parser, not `source`.
+It was supplied **quoted** (`EMAIL_FROM="LingosAI <noreply@lingosai.com>"`) and was
+uploaded **unquoted**. Docker's `--env-file` does not strip quotes, so the quoted form
+would have put literal `"` characters in the sender address and Resend would have rejected
+every OTP email — meaning no account could ever have been verified. Do not "helpfully"
+re-quote it.
+
+The trap: the unquoted form cannot be `source`d in a shell, because `<` reads as a
+redirect. Load the file with a parser, not `source`.
+
+## Live environment quick reference
+
+Verified from `az` on 31 August 2026. Both `az` and `gh` authenticate from the owner's
+workstation.
+
+| | |
+| --- | --- |
+| Subscription | `e231ab32-f4d4-4a1b-b96c-3cf279036ab7` (`Azure subscription 1`) |
+| Resource group | `rg-lingosai-prod`, `centralindia` |
+| VM | `vm-lingosai-prod`, `Standard_B2ats_v2` — **2 vCPU / 1 GiB RAM** |
+| PostgreSQL | `psql-lingosai-e231`, `B1ms`, PG 16, Entra-only auth |
+| Public IP | `pip-lingosai-prod`, Standard, **static**, `20.219.52.248` |
+| DNS | `api.lingosai.com` → `20.219.52.248` (already resolves) |
+| ACR | `acrlingosaie231`, **Basic** SKU, admin disabled, repo `lingosai-backend` |
+| Key Vault | `kv-lingosai-e231`, secret `backend-env` |
+| Blob | `stlingosaipube231` (`public-media`), `stlingosaiprive231` (`learner-media`, `internal-media`) |
+| Frontend | Vercel, `www.lingosai.com` |
+| Automation | `AZURE_AUTOMATION_ENABLED=true`; `production` Environment exists and is reviewer-gated |
+
+The VM and PostgreSQL being stopped is the **normal resting state**, not a fault.
+
+### Everyday commands
+
+```bash
+./scripts/azure-status.sh          # state, live window, public health, hours vs 750
+./scripts/azure-up.sh 4            # wake for 4 hours, then poll the public endpoint
+./scripts/azure-down.sh            # drain, deallocate, stop PostgreSQL
+```
+
+```bash
+cd backend && uv run python scripts/check_external_services.py
+```
+
+---
+
+## Next up: Phase 3 — wake, deploy, verify live
+
+Everything Phase 3 needs is in place. This is the phase that makes the API publicly
+reachable. Branch `fix/azure-live-bringup`; the PR carries whatever fixes fall out.
+
+**Before starting, check the hour budget** with `./scripts/azure-status.sh`. August 2026
+used 713.5 of 750 hours; the allowance resets on the 1st of each month.
+
+1. **Wake it.** `./scripts/azure-up.sh 6`. Expect the public poll to fail on the first run
+   — the container is still on the old environment and Caddy's maintenance marker may
+   never lift. That is not a reason to stop; continue to step 2.
+2. **Make the VM re-read Key Vault.** The VM does *not* notice a new secret version on its
+   own. Re-run the host bootstrap through Run Command:
+   `bash azure-vm-bootstrap.sh api.lingosai.com kv-lingosai-e231 backend-env`. It
+   re-validates the file and installs it at `/etc/lingosai/backend.env`, root-owned, 0600.
+3. **Redeploy** so the container restarts with the new environment: `gh workflow run
+   azure-deploy.yml`, approve in the `production` Environment. Confirm the run resolves a
+   `sha256` digest rather than a floating tag.
+4. **Re-run the credential checker on the VM.** This is the first time `azure-postgres`
+   and `azure-blob` are exercised through the VM's managed identity:
+   ```
+   az vm run-command invoke -g rg-lingosai-prod -n vm-lingosai-prod \
+     --command-id RunShellScript \
+     --scripts 'docker run --rm --env-file /etc/lingosai/backend.env \
+       $(cat /var/lib/lingosai/deployed-image) python scripts/check_external_services.py'
+   ```
+   All eleven probes should pass here. Locally only ten can.
+5. **First admin** on the fresh database, per
+   [../AZURE_FRESH_START_ADMIN_BOOTSTRAP.md](../AZURE_FRESH_START_ADMIN_BOOTSTRAP.md)
+   using `backend/scripts/bootstrap_fresh_admin.py`.
+6. **Seed content**: `seed_curriculum.py`, then `seed_ielts_challenge.py` and
+   `seed_a2z_challenge.py`.
+7. **Public checks**: `/health/live`, `/health/ready`, `/docs`, and confirm the Caddy
+   maintenance marker at `/var/lib/lingosai/maintenance` is gone.
+8. **Point the frontend at it**: Vercel env `NEXT_PUBLIC_API_URL=https://api.lingosai.com`
+   and `NEXT_PUBLIC_WS_URL=wss://api.lingosai.com`, then redeploy.
+9. **External callbacks**: add `https://api.lingosai.com/auth/google/callback` to the
+   Google OAuth client, and point the Razorpay **test** webhook at
+   `https://api.lingosai.com/api/payments/webhook`.
+
+**Done when** `https://www.lingosai.com` loads with the availability banner in its *live*
+state and `/health/ready` returns 2xx.
+
+**Then run `./scripts/azure-down.sh`.** Leaving it awake is what burned August.
+
+### Things that will probably bite
+
+- **1 GiB of RAM.** One uvicorn worker with `AI_MAX_CONCURRENT_JOBS=3`, plus RAG and image
+  generation now enabled, is tight. The host has 1 GB of swap. If the container OOMs, drop
+  `AI_MAX_CONCURRENT_JOBS` to `2` in a new `backend-env` version before resizing the VM.
+- **A 503 with the VM running** usually means the container is unhealthy, so the
+  maintenance marker was never removed. Check `docker logs --tail 50 lingosai-backend`.
+- **PostgreSQL firewall admits only `20.219.52.248`.** Any database probe from a laptop
+  will time out. That is correct, not a defect.
+- **Azure force-restarts a stopped Flexible Server after seven days.** The hourly watchdog
+  puts it back to sleep.
+
+---
 
 ## Open issues
 
@@ -76,10 +183,11 @@ shell, because `<` reads as a redirect. Load it with a parser, not `source`.
   and third-party amplification against a 1 GiB VM, for no coverage the checker script
   does not already provide. Deep verification runs on demand instead, via
   `backend/scripts/check_external_services.py` on the VM. Revisit only behind admin auth.
-- **Phase 1 leaves one manual step for the owner.** The repository now carries the
-  template and the build/validate script, but the file with real secrets must be produced
-  and uploaded by hand: `scripts/build-prod-env.sh init`, fill the 13 secret values,
-  then `check` and `upload`. Phase 3 cannot start until that upload has happened.
+- **The production keys should be rotated once the site is stable.** They were pasted
+  into a chat transcript on 31 August while assembling the environment file. Nothing is
+  known to be leaked, but treat them as burned: OpenAI, Razorpay, Google OAuth, Resend,
+  Pinecone, Azure Speech and the Sentry DSN. Rotating means a new `backend-env` version
+  plus a redeploy — the same flow as Phase 1.
 
 Findings from Phase 4 in particular belong here.
 
