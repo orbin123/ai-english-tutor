@@ -22,7 +22,7 @@ AI attribution in commits or PRs, and never commit a real secret.
 | --- | --- | --- | --- | --- | --- | --- |
 | 0 | Tracking files | `docs/azure-master-plan` | [#208](https://github.com/orbin123/lingos-ai/pull/208) | DONE | 2026-08-31 | `docs/azure/` had to be un-ignored in `.gitignore` |
 | 1 | Production environment file | `chore/azure-prod-env-template` | — | IN PROGRESS | 2026-08-31 | Template + `scripts/build-prod-env.sh` are in the PR. **The owner still has to run `init` / `edit` / `check` / `upload` to put real keys in Key Vault** — that step is deliberately manual |
-| 2 | External credential verification | `feat/external-service-healthcheck` | — | NOT STARTED | — | Must pass **on the VM**, not just locally |
+| 2 | External credential verification | `feat/external-service-healthcheck` | — | IN PROGRESS | 2026-08-31 | Script passes locally against real keys. Still needs a run **on the VM** in Phase 3 |
 | 3 | Wake, deploy, verify live | `fix/azure-live-bringup` | — | NOT STARTED | — | Needs Phase 1 uploaded to Key Vault first |
 | 4 | End-to-end functional verification | `test/azure-e2e-smoke` | — | NOT STARTED | — | Chat flow, mentor note, stats/streak dates |
 | 5 | Local sleep/wake control | `feat/local-azure-lifecycle-scripts` | — | NOT STARTED | — | `azure-up.sh` / `azure-down.sh` / `azure-status.sh` |
@@ -30,6 +30,12 @@ AI attribution in commits or PRs, and never commit a real secret.
 
 ## Open issues
 
+- **The `/health/ready?deep=1` idea from MASTER_PLAN Phase 2 was deliberately dropped.**
+  `/health/ready` is unauthenticated and public, so a `deep` mode would let anyone on the
+  internet trigger outbound calls to Pinecone and Azure Blob on every request — latency
+  and third-party amplification against a 1 GiB VM, for no coverage the checker script
+  does not already provide. Deep verification runs on demand instead, via
+  `backend/scripts/check_external_services.py` on the VM. Revisit only behind admin auth.
 - **Phase 1 leaves one manual step for the owner.** The repository now carries the
   template and the build/validate script, but the file with real secrets must be produced
   and uploaded by hand: `scripts/build-prod-env.sh init`, fill the 13 secret values,

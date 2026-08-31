@@ -84,6 +84,7 @@ backend/scripts/*
 !backend/scripts/cleanup_media_cache.py
 !backend/scripts/bootstrap_azure_postgres.py
 !backend/scripts/bootstrap_fresh_admin.py
+!backend/scripts/check_external_services.py
 
 # Local archive of deprecated files (kept locally, not committed)
 backend/.archive/
