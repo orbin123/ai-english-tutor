@@ -49,7 +49,7 @@ jobs:
 
       - name: Authenticate to Azure with GitHub OIDC
         id: azure_login
-        uses: azure/login@8c334a195cbb38e46038007b304988d888bf676a
+        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
